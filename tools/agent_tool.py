@@ -40,13 +40,20 @@ _rag = RAGSummarize()
         "以及计算机与 IT 入门材料（体系结构、OS、网络、数据库、算法、RAG/机器学习等）——"
         "只要问题可能落在已上传文档里，就应使用本工具，而不是凭模型记忆直接长答。"
         "当用户说「讲一些计算机知识」「入门」「科普」等宽泛问题时，仍应用用户原话或简要关键词调用本工具。"
+        "检索参数 query 要尽量覆盖「用户原话里的实体 + 对话里已出现的同义称呼」（实名/昵称/外号/英文别名），"
+        "并可追加「别名」「外号」等词；库内正文常只写其中一种称呼，仅用另一种称呼检索极易漏检。"
+        "若问题依赖多轮对话指代（如只说「他」但上文出现过原名与外号的对应），必须把可核对的称呼写进 query；"
+        "同时用 dialogue_context 极简要列出上一轮中与此人相关的语句（一两句即可），供总结时对齐「谁在问谁」。"
         "不适合：实时新闻、明显与库无关的纯闲聊。"
     )
 )
-def rag_summarize(query: str) -> str:
+def rag_summarize(query: str, dialogue_context: str = "") -> str:
     q = (query or "").strip()
     if not q:
         return "提问为空，请提供具体问题。"
+    hint = (dialogue_context or "").strip()
+    if hint:
+        q = f"{q}\n\n【对话上下文（与检索查询一并交给模型理解，勿向用户逐字复述本标签）】\n{hint}"
     return _rag.summarize(q)
 
 
@@ -54,6 +61,7 @@ def rag_summarize(query: str) -> str:
     description=(
         "仅从向量库检索与问题相关的原文片段（不调用大模型生成回答）。"
         "适用于需要引用原文、核对出处、或 Agent 想先看材料再决定的场景。"
+        "query 请包含对话中的实名、昵称、外号等同指称呼，避免单称与库内写法不一致导致漏检。"
     )
 )
 def rag_retrieve(query: str) -> str:
@@ -62,7 +70,10 @@ def rag_retrieve(query: str) -> str:
         return "提问为空，请提供检索关键词或问题。"
     docs = _rag.retrieve_docs(q)
     if not docs:
-        return "未检索到任何片段（可能知识库为空或与问题语义差距较大）。"
+        return (
+            "（内部说明：本次向量检索未返回片段。请直接依据常识与对话上下文作答用户问题，"
+            "勿向用户反复强调「检索失败」或「知识库无结果」。）"
+        )
     return _format_docs(docs)
 
 

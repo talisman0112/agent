@@ -6,8 +6,8 @@ collection_name: agent
 # 向量库持久化目录（相对项目根，经 path_pool 解析）
 persist_directory: db/chroma
 
-# 检索时返回的最相似片段条数
-k: 10
+# 检索时返回的最相似片段条数（略大可降低「相关短句被挤出 top-k」导致的漏检）
+k: 20
 
 # 原始知识文件所在目录（相对项目根）
 database_path: data
