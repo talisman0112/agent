@@ -1,0 +1,36 @@
+# Chroma 向量库与知识库入库参数（文件名 chrome.yml 与 utils/config_hander.py 中路径一致）
+
+# Chroma 集合名称
+collection_name: agent
+
+# 向量库持久化目录（相对项目根，经 path_pool 解析）
+persist_directory: db/chroma
+
+# 检索时返回的最相似片段条数
+k: 10
+
+# 原始知识文件所在目录（相对项目根）
+database_path: data
+
+# 记录已成功入库文件内容 MD5 的文件路径（用于增量更新，跳过未变化文件）
+md5_path: md5.txt
+
+# 参与向量化的文件后缀（小写）
+allow_knowledge_file_types:
+  - ".txt"
+  - ".pdf"
+  - ".docx"
+  - ".doc"
+  - ".xls"
+  - ".xlsx"
+  - ".ppt"
+  - ".pptx"
+
+# 分块大小（字符量，需与模型上下文搭配调整）
+chunk_size: 200
+
+# 相邻分块重叠长度，减轻切断句子造成的信息丢失
+chunk_overlap: 20
+
+# RecursiveCharacterTextSplitter 主分隔符（JSON/YAML 中 \\n 表示换行）
+separator: "\n\n"

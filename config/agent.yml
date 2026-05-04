@@ -1,0 +1,14 @@
+# ReAct / 工具调用 Agent 的通用参数（当前工程在 import 时会加载本文件；
+# 若要在代码中使用，请 from utils.config_hander import agent_config 读取相应键）
+
+# 单次对话中模型推理+工具调用的最大步数（防止死循环）
+max_iterations: 15
+
+# 是否在控制台输出中间推理步骤（便于调试）
+verbose: false
+
+# 可选：Agent 在对话中的显示名称（日志或 UI 可用）
+display_name: RAG助手
+
+# 可选：工具调用解析失败时是否将错误信息反馈给模型重试（与 LangChain Agent 的 handle_parsing_errors 概念一致）
+handle_parsing_errors: true

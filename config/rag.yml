@@ -1,0 +1,13 @@
+# 通义千问（DashScope）模型配置
+# API Key：请设置环境变量 DASHSCOPE_API_KEY 或 TONGYI_API_KEY（与 model/model.py 中读取方式一致）
+
+# 对话模型名称（ChatTongyi / DashScope）
+chat_model: qwen3-max
+
+# 文本向量模型名称（用于 Chroma 入库与检索）
+embedding_model: text-embedding-v3
+
+# --- 以下为可选超参；如需生效请在 model/model.py 中传入 ChatTongyi ---
+# temperature: 0.2
+# max_tokens: 8192
+# top_p: 0.9
