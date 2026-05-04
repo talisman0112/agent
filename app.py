@@ -6,6 +6,20 @@ st.set_page_config(page_title="Agent Demo", page_icon="🤖")
 st.title("Agent demo")
 st.divider()
 
+# 侧边栏：模式切换
+with st.sidebar:
+    st.header("设置")
+    report_mode = st.toggle(
+        "📋 报告模式",
+        value=False,
+        help="开启后使用报告模式提示词（结构化、可沉淀的回答），关闭则使用常规对话模式"
+    )
+    if report_mode:
+        st.caption("当前：报告模式 - 输出结构化、可沉淀的回答")
+    else:
+        st.caption("当前：对话模式 - 常规对话交互")
+    st.divider()
+
 if "agent" not in st.session_state:
     st.session_state.agent = ReactAgent()
 if "messages" not in st.session_state:
@@ -25,6 +39,7 @@ if prompt:
             stream = st.session_state.agent.execute(
                 prompt,
                 conversation_history=st.session_state.messages,
+                report_mode=report_mode,
             )
             # Streamlit 1.28+：逐 token/片段写入
             full = st.write_stream(stream)

@@ -73,12 +73,15 @@ class ReactAgent:
         conversation_history: list[dict] | None = None,
         short_term_turns: int | None = 20,
         log_tool_calls: bool = True,
+        report_mode: bool = False,
     ):
         """流式输出：按 values 事件中最后一条 AI 消息的增量 yield 文本片段。
 
         ``conversation_history`` 为短期记忆：每项 ``{"role": "user"|"assistant", "content": str}``，
         应为**不含本轮用户提问**的上文；不传则与本实现原先行为一致（单轮）。
         ``short_term_turns`` 表示最多保留的对话轮数上限（每轮约含一条用户消息与一条助手消息）。
+        ``report_mode`` 控制使用的提示词策略：True 时使用报告模式（结构化、可沉淀的回答），
+        False 时使用主对话模式（常规对话）。
 
         判断是否调用了工具，可以：
         1. 看本方法执行后的 ``self.last_tool_calls``（本次 run 的非空表示调用过工具）；
@@ -96,7 +99,7 @@ class ReactAgent:
         stream = self.agent.stream(
             {"messages": messages_to_send},
             stream_mode=["values", "updates"],
-            context={"report": True},
+            context={"report": report_mode},
         )
         try:
             for mode, event in stream:

@@ -1,0 +1,22 @@
+# Agent + Streamlit + RAG（Chroma）+ 通义（DashScope）
+# Python 建议 3.10+（当前环境在 3.11 下验证过依赖版本）
+#
+#   pip install -r requirements.txt
+#
+# 环境变量见项目根目录 ENV.example
+
+streamlit==1.56.0
+langchain==1.2.15
+langchain-core==1.3.0
+langchain-classic==1.0.4
+langchain-community==0.4.1
+langchain-chroma==1.1.0
+langchain-text-splitters==1.1.2
+langgraph==1.1.8
+chromadb==1.5.8
+dashscope==1.25.17
+PyYAML==6.0.3
+
+# PDF / DOCX 入库与加载（utils/file_hander）
+pypdf>=4.0.0
+docx2txt>=0.8

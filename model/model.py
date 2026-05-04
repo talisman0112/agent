@@ -26,9 +26,24 @@ class chat_model(base_model):
             return None
         # Tongyi 集成走 DashScope；未传 api_key 时由 ChatTongyi 读环境变量 DASHSCOPE_API_KEY
         api_key = os.getenv("TONGYI_API_KEY") or os.getenv("DASHSCOPE_API_KEY")
-        kwargs: dict = {"model_name": rag_config["chat_model"]}
+        kwargs: dict[str, Any] = {"model_name": rag_config["chat_model"]}
         if api_key:
             kwargs["api_key"] = api_key
+
+        top_p = rag_config.get("top_p")
+        if top_p is not None:
+            kwargs["top_p"] = float(top_p)
+
+        model_kwargs: dict[str, Any] = {}
+        t = rag_config.get("temperature")
+        if t is not None:
+            model_kwargs["temperature"] = float(t)
+        mt = rag_config.get("max_tokens")
+        if mt is not None:
+            model_kwargs["max_tokens"] = int(mt)
+        if model_kwargs:
+            kwargs["model_kwargs"] = model_kwargs
+
         return ChatTongyi(**kwargs)
 
 

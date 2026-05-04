@@ -7,7 +7,10 @@ chat_model: qwen3-max
 # 文本向量模型名称（用于 Chroma 入库与检索）
 embedding_model: text-embedding-v3
 
-# --- 以下为可选超参；如需生效请在 model/model.py 中传入 ChatTongyi ---
-# temperature: 0.2
-# max_tokens: 8192
-# top_p: 0.9
+# --- 对话模型（ChatTongyi / DashScope）采样与长度；缺省不写则沿用集成默认行为 ---
+# temperature: 取值越大输出越发散，越小越趋于确定性
+temperature: 0.7
+# max_tokens: 单次回复上限（上限以模型服务端为准）
+max_tokens: 8192
+# top_p:  nucleus sampling，与 Tongyi 的 top_p 字段一致；通常与 temperature 配合调风格
+top_p: 0.9
