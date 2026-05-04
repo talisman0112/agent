@@ -158,11 +158,82 @@ def calculate_arithmetic(expression: str) -> str:
 # 天气（Open-Meteo，无需 API Key，需能访问公网）
 # ---------------------------------------------------------------------------
 
+REQUEST_TIMEOUT_SECONDS = 12.0
 
-def _http_get_json(url: str, timeout: float = 12.0) -> dict:
+
+def _http_get_json(
+    url: str,
+    *,
+    timeout: float | None = None,
+    service_hint: str = "外网服务",
+) -> dict:
+    """GET JSON；失败时抛出 ``ValueError``，消息为简短中文，供工具原样返回给模型。"""
+    to = REQUEST_TIMEOUT_SECONDS if timeout is None else timeout
     req = urllib.request.Request(url, headers={"User-Agent": "rag-agent-tools/1.0"})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return json.loads(resp.read().decode())
+    try:
+        with urllib.request.urlopen(req, timeout=to) as resp:
+            raw = resp.read()
+    except urllib.error.HTTPError as e:
+        code = getattr(e, "code", None)
+        reason = getattr(e, "reason", "") or ""
+        if code == 429:
+            raise ValueError(
+                f"{service_hint}：请求过于频繁（HTTP 429），请稍后再试。"
+            ) from e
+        if code in (502, 503, 504):
+            raise ValueError(
+                f"{service_hint}：服务暂时不可用（HTTP {code}），请稍后重试。"
+            ) from e
+        raise ValueError(
+            f"{service_hint}：HTTP {code} {reason}".strip()
+        ) from e
+    except urllib.error.URLError as e:
+        nested = getattr(e, "reason", None)
+        err_msg = " ".join(
+            x for x in (str(e), str(nested) if nested is not None else "") if x
+        ).lower()
+        if "timed out" in err_msg or "timeout" in err_msg:
+            raise ValueError(
+                f"{service_hint}：请求超时，请检查网络或稍后再试。"
+            ) from e
+        if (
+            "name or service not known" in err_msg
+            or "getaddrinfo failed" in err_msg
+            or "temporary failure in name resolution" in err_msg
+        ):
+            raise ValueError(
+                f"{service_hint}：DNS 解析失败，请检查网络与 DNS 设置。"
+            ) from e
+        if "certificate" in err_msg or "ssl" in err_msg:
+            raise ValueError(
+                f"{service_hint}：TLS/证书校验失败，请检查网络或代理环境。"
+            ) from e
+        raise ValueError(f"{service_hint}：网络不可用（{e.reason or e}）。") from e
+    except TimeoutError as e:
+        raise ValueError(
+            f"{service_hint}：请求超时，请检查网络或稍后再试。"
+        ) from e
+    except OSError as e:
+        err_msg = str(e).lower()
+        if "timed out" in err_msg or "timeout" in err_msg:
+            raise ValueError(
+                f"{service_hint}：请求超时，请检查网络或稍后再试。"
+            ) from e
+        raise ValueError(f"{service_hint}：{e}") from e
+
+    try:
+        text = raw.decode()
+    except UnicodeDecodeError as e:
+        raise ValueError(
+            f"{service_hint}：响应不是合法 UTF-8，无法解析为 JSON。"
+        ) from e
+
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as e:
+        raise ValueError(
+            f"{service_hint}：返回内容不是合法 JSON（{e}）。"
+        ) from e
 
 
 @tool(
@@ -179,11 +250,9 @@ def get_weather_by_location(location_name: str) -> str:
     q = urllib.parse.urlencode({"name": name, "count": 1, "language": "zh"})
     geo_url = f"https://geocoding-api.open-meteo.com/v1/search?{q}"
     try:
-        geo = _http_get_json(geo_url)
-    except (urllib.error.URLError, TimeoutError, OSError) as e:
-        return f"地理编码请求失败（网络或超时）: {e}"
-    except json.JSONDecodeError as e:
-        return f"地理编码返回非 JSON: {e}"
+        geo = _http_get_json(geo_url, service_hint="地理编码")
+    except ValueError as e:
+        return str(e)
 
     results = geo.get("results") or []
     if not results:
@@ -206,15 +275,18 @@ def get_weather_by_location(location_name: str) -> str:
     )
     wx_url = f"https://api.open-meteo.com/v1/forecast?{params}"
     try:
-        wx = _http_get_json(wx_url)
-    except (urllib.error.URLError, TimeoutError, OSError) as e:
-        return f"已解析地点「{place}」，但天气接口失败: {e}"
+        wx = _http_get_json(wx_url, service_hint="天气接口")
+    except ValueError as e:
+        return f"已解析地点「{place}」，但{str(e)}"
 
     cur = wx.get("current") or {}
     temp = cur.get("temperature_2m")
     code = cur.get("weather_code")
     if temp is None:
-        return f"地点「{place}」天气数据不完整: {wx}"
+        return (
+            f"地点「{place}」天气数据不完整（接口未返回 temperature_2m，"
+            "可能为限流或响应格式变化）。"
+        )
     return f"{place} | 当前约 {temp}°C（WMO weather_code={code}）"
 
 
@@ -231,9 +303,9 @@ def geocode_place(place_name: str) -> str:
     q = urllib.parse.urlencode({"name": name, "count": 3, "language": "zh"})
     geo_url = f"https://geocoding-api.open-meteo.com/v1/search?{q}"
     try:
-        geo = _http_get_json(geo_url)
-    except (urllib.error.URLError, TimeoutError, OSError) as e:
-        return f"请求失败: {e}"
+        geo = _http_get_json(geo_url, service_hint="地理编码")
+    except ValueError as e:
+        return str(e)
 
     rows = geo.get("results") or []
     if not rows:
@@ -264,6 +336,7 @@ TOOLS = [
 
 __all__ = [
     "TOOLS",
+    "REQUEST_TIMEOUT_SECONDS",
     "rag_summarize",
     "rag_retrieve",
     "get_local_datetime",

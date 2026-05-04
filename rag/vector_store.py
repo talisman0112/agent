@@ -59,10 +59,13 @@ class VectorStoreService:
     def __init__(self):
         if embedding_model is None:
             raise RuntimeError(_EMBED_DISABLED_MSG)
+        # 确保 persist_directory 为绝对路径，避免从不同工作目录启动时路径不一致
+        persist_dir = get_abs_path(chroma_config["persist_directory"])
+        logger.info("Chroma 持久化路径: %s", persist_dir)
         self.chroma = Chroma(
             collection_name=chroma_config["collection_name"],
             embedding_function=embedding_model,
-            persist_directory=chroma_config["persist_directory"],
+            persist_directory=persist_dir,
         )
         self.spliter = RecursiveCharacterTextSplitter(
             chunk_size=chroma_config["chunk_size"],

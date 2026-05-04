@@ -53,43 +53,53 @@
 
 ## 三、报告模式与主对话模式的切换
 
+**状态：已落地** — `tools/reactagent.py` 的 `execute` 方法新增 `report_mode: bool = False` 参数，`app.py` 侧边栏提供 `st.toggle` 切换开关，实时控制使用 `main_prompt` 还是 `report_prompt`。
+
 ### 优化目标
 
 `ReactAgent` 中 `context={"report": True}` 应与产品需求一致：`report_prompt` 与 `main_prompt` 由场景决定，而不是写死。
 
 ### 建议流程
 
-1. 明确两种模式差异：主对话（`get_main_prompt()`）与报告（`get_report_prompt()`）分别对应哪些页面或按钮。
-2. 在 `tools/reactagent.py` 的 `execute` 签名中增加可选参数，例如：`report_mode: bool = False`，在 `stream(..., context={"report": report_mode})` 中传入。
-3. 在 `app.py` 用 `st.toggle` 或侧边栏选项设置 `report_mode`，调用 `agent.execute(..., report_mode=...)`。
-4. 自测：切换开关后，抽查 `log/agent.log` 中 middleware 是否仍能正确切换（日志可辅助确认 prompt 策略）。
+1. ✅ 明确两种模式差异：主对话（`get_main_prompt()`）与报告（`get_report_prompt()`）分别对应哪些页面或按钮。
+2. ✅ 在 `tools/reactagent.py` 的 `execute` 签名中增加可选参数 `report_mode: bool = False`，在 `stream(..., context={"report": report_mode})` 中传入。
+3. ✅ 在 `app.py` 用 `st.toggle` 在侧边栏设置 `report_mode`，调用 `agent.execute(..., report_mode=...)`。
+4. ✅ 自测：切换开关后，抽查 `log/agent.log` 中 middleware 正确切换（input_tokens 差异可辅助确认 prompt 策略）。生效日期：2026-05-04。
 
 ---
 
 ## 四、知识库运维（上传与重建索引）
 
+**状态：已落地** — `app.py` 侧边栏新增文件上传区域，支持拖拽上传 `.txt/.pdf/.docx/.doc/.xls/.xlsx/.ppt/.pptx` 文件到 `data/` 目录，并提供「🚀 执行入库」按钮一键触发 `VectorStoreService().load_data()`，入库进度与结果通过 `st.spinner` / `st.success` / `st.error` 实时反馈。
+
 ### 优化目标
 
 减少「手工拷贝到 `data/` 后忘记跑入库」导致的空检索或旧向量。
 
-### 建议流程（当前以代码入口为主）
+### 建议流程
 
-1. 将待入库文件放入 `config/chrome.yml`（或实际使用的 chroma 配置文件）中 `database_path` 所指目录（默认相对项目根的 `data`）。
-2. 执行向量库入库。在项目根目录下（需已配置 `DASHSCOPE_API_KEY` 且依赖齐全）：
+1. ✅ **Web 上传**：在 Streamlit 侧边栏使用 `st.file_uploader` 上传文件，支持多选与格式过滤。
+2. ✅ **MD5 去重检测**：上传时自动计算文件 MD5，与 `data/` 目录中现有文件比对：
+   - 若内容已存在（无论文件名是否相同），提示跳过，避免重复上传
+   - 同一批次上传中相同内容的文件也会去重
+3. ✅ **自动保存**：通过 MD5 检测的新文件自动写入 `data/` 目录。
+4. ✅ **一键入库**：点击「🚀 执行入库」按钮调用 `VectorStoreService().load_data()`，显示「正在入库，请稍候...」提示，大文件耗时友好。
+5. ✅ **增量更新**：`load_data()` 自动根据 MD5 校验跳过未变化的文件，避免重复计算。
+6. ✅ **结果反馈**：入库完成显示 ✅ 成功提示，失败显示 ❌ 错误信息及排查建议。
 
-   ```text
-   python rag/vector_store.py load
-   ```
+### 传统命令行入口（仍可用）
 
-   传入 `ingest` 与 `load` 等价，均会执行 `VectorStoreService().load_data()`。
+```text
+python rag/vector_store.py load
+```
 
-   若以模块方式调用，需注意 `rag/vector_store.py` 开头的 `sys.path` 注入；建议在仓库根目录用上述脚本入口。
-3. 确认：`chroma` 持久化目录中存在数据，检索测试能返回非零条数。
-4. （可选演进）在 Streamlit 增加「上传到 `data` + 一键触发 `load_data`」，并提示「大文件入库耗时」，避免重复点击。
+生效日期：2026-05-04。
 
 ---
 
 ## 五、Chroma 持久化路径与启动目录
+
+**状态：已落地** — `rag/vector_store.py` 中 `Chroma` 初始化时，`persist_directory` 通过 `get_abs_path()` 转换为绝对路径，并在初始化时通过 `logger.info` 打印实际持久化路径，便于排障。
 
 ### 优化目标
 
@@ -97,13 +107,17 @@
 
 ### 建议流程
 
-1. 审查 `persist_directory` 是否为相对路径；若是，在项目根解析为绝对路径（例如通过 `utils/path_pool.get_abs_path`）。
-2. 全局搜索 `persist_directory`、`Chroma(` 初始化处，保证只有一种解析规则。
-3. 在日志或启动脚本中打印一次「实际持久化路径」，便于排障。
+1. ✅ 审查 `persist_directory` 是否为相对路径；已在项目根通过 `utils/path_pool.get_abs_path` 解析为绝对路径。
+2. ✅ `Chroma(` 初始化处统一使用解析后的绝对路径，保证只有一种解析规则。
+3. ✅ 在日志中打印「实际持久化路径」：`logger.info("Chroma 持久化路径: %s", persist_dir)`。
+
+生效日期：2026-05-04。
 
 ---
 
 ## 六、Streamlit 侧错误与用户提示
+
+**状态：已落地** — `app.py` 中 `execute`/`write_stream` 外层已包 `try/except`，捕获常见异常类型（超时、401/认证失败、429/限流、网络连接等），通过 `st.error` 显示友好的中文错误提示，并将错误消息写入会话历史。
 
 ### 优化目标
 
@@ -111,9 +125,17 @@
 
 ### 建议流程
 
-1. 在 `app.py` 的 `execute`/`write_stream` 外层包 `try/except`，捕获常见异常类型（超时、401、429 等），将简短中文说明写入会话消息。
-2. 对工具类错误：`ReactAgent.execute` 内可在 `finally` 或except 分支写一条 `logger.exception`，前端展示降级文案「服务暂时不可用，请稍后重试」。
-3. 自测：临时填错 API Key、断网调用天气接口，验证 UI 与 `agent.log`。
+1. ✅ 在 `app.py` 的 `execute`/`write_stream` 外层包 `try/except`，捕获常见异常类型：
+   - `timeout` / `timed out` → ⏱️ 请求超时提示
+   - `401` / `authentication` / `api key` → 🔑 认证失败提示
+   - `429` / `rate limit` / `too many requests` → 🚦 限流提示
+   - `connection` / `network` / `urlopen` → 🌐 网络连接提示
+   - `embedding` 相关 → 🔧 向量模型未就绪提示
+   - 其他异常 → 😅 通用降级文案「服务暂时不可用，请稍后重试」
+2. ✅ 前端通过 `st.error()` 展示中文错误提示，错误消息也保存到会话历史 `st.session_state.messages`。
+3. ✅ 工具类错误仍记录在 `agent.log` 中，保持日志与前端提示分离。
+
+生效日期：2026-05-04。
 
 ---
 
@@ -133,15 +155,19 @@
 
 ## 八、外网工具（天气 / 地理）健壮性
 
+**状态：已落地** — `tools/agent_tool.py` 中 Open-Meteo 请求统一使用 `REQUEST_TIMEOUT_SECONDS`，`_http_get_json` 集中处理 `HTTPError`（含 429/502/503/504）、`URLError`（含超时、DNS、TLS）、`TimeoutError`、`OSError`、`JSONDecodeError`、`UnicodeDecodeError`，失败时抛出简短中文 `ValueError`，由 `get_weather_by_location` / `geocode_place` 原样返回给模型；异常天气响应不再整段 `dict` 回填工具结果。
+
 ### 优化目标
 
 Open-Meteo 类接口偶发超时或限流时不拖垮整轮对话。
 
 ### 建议流程
 
-1. 已为 URL 调用设置超时则保持；可统一常量 `REQUEST_TIMEOUT_SECONDS`。
-2. 失败时返回短错误串（工具内已实现时可审查是否覆盖 `JSONDecodeError`、超时、DNS）。
-3. 如需更高 SLA：替换为付费天气 API，工具层保持「输入地名 → 结构化结果」接口不变。
+1. ✅ 统一常量 `REQUEST_TIMEOUT_SECONDS`（默认 12s），所有 URL 调用经 `_http_get_json`。
+2. ✅ 失败时返回短错误串；覆盖 JSON 解析失败、超时、DNS、HTTP 限流/网关错误、TLS 等。
+3. （可选）替换为付费天气 API 时，保持「输入地名 → 可读结果」工具签名不变即可替换实现。
+
+生效日期：2026-05-05。
 
 ---
 
