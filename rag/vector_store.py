@@ -27,6 +27,26 @@ from utils.file_hander import (
 from utils.log import logger
 from utils.path_pool import get_abs_path
 
+from rag.structured_chunking import (
+    prepend_section_title_to_chunks,
+    split_documents_by_sections,
+)
+
+
+# 未配置 separators / separator 时的默认回退顺序（与 CHUNK_OPTIMIZATION.md 2.1 一致）
+_DEFAULT_TEXT_SPLIT_SEPARATORS = ["\n\n", "\n", "。", "！", "？", "；", "，", " ", ""]
+
+
+def _resolve_text_splitter_separators(cfg: dict) -> list[str]:
+    """从 chrome 配置解析 RecursiveCharacterTextSplitter 的 separators 列表。"""
+    raw_list = cfg.get("separators")
+    if isinstance(raw_list, list) and raw_list:
+        return ["" if s is None else str(s) for s in raw_list]
+    legacy = cfg.get("separator")
+    if isinstance(legacy, str) and legacy:
+        return [legacy]
+    return list(_DEFAULT_TEXT_SPLIT_SEPARATORS)
+
 
 _EMBED_DISABLED_MSG = (
     "embedding 未就绪：请先 pip install dashscope langchain-community，并设置环境变量 DASHSCOPE_API_KEY。\n"
@@ -67,10 +87,17 @@ class VectorStoreService:
             embedding_function=embedding_model,
             persist_directory=persist_dir,
         )
+        split_seps = _resolve_text_splitter_separators(chroma_config)
         self.spliter = RecursiveCharacterTextSplitter(
             chunk_size=chroma_config["chunk_size"],
             chunk_overlap=chroma_config["chunk_overlap"],
-            separators=[chroma_config["separator"]],
+            separators=split_seps,
+        )
+        logger.info(
+            "Text splitter: chunk_size=%s chunk_overlap=%s separators=%d级",
+            chroma_config["chunk_size"],
+            chroma_config["chunk_overlap"],
+            len(split_seps),
         )
 
     def get_retriever(self):
@@ -116,7 +143,13 @@ class VectorStoreService:
                 if not document:
                     logger.error("No documents loaded: %s", file_path)
                     continue
+                if chroma_config.get("structured_chunking_enabled", True):
+                    document = split_documents_by_sections(document)
                 split_documents = self.spliter.split_documents(document)
+                if chroma_config.get("structured_chunking_enabled", True) and chroma_config.get(
+                    "structured_chunk_prepend_section", True
+                ):
+                    split_documents = prepend_section_title_to_chunks(split_documents)
                 if not split_documents:
                     logger.error("Split produced no chunks: %s", file_path)
                     continue

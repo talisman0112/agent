@@ -509,3 +509,186 @@
 2026-05-05 18:49:26,973 - agent - INFO - 使用增强版 Reranker（阈值: 0.25, 去重: 0.70, 模式: qa, 自动: True）
 2026-05-05 18:49:28,093 - agent - INFO - 去重处理: 5 docs → 2 docs (过滤了 3 个重复)
 2026-05-05 18:49:28,093 - agent - INFO - Rerank 完成: 20 docs → 2 docs (阈值: 0.25)
+2026-05-05 19:10:51,151 - agent - INFO - Web 搜索解析: 原始 2 条, 有效 2 条
+2026-05-05 19:10:51,153 - agent - INFO - 本地检索: 2 条
+2026-05-05 19:10:51,154 - agent - INFO - Web 搜索解析: 原始 2 条, 有效 2 条
+2026-05-05 19:10:51,154 - agent - INFO - Web 搜索: 2 条
+2026-05-05 19:10:51,154 - agent - INFO - 多路召回总计: 4 条 (本地 2 + Web 2)
+2026-05-05 19:10:51,155 - agent - INFO - 本地检索: 2 条
+2026-05-05 19:10:51,155 - agent - INFO - Web 搜索解析: 原始 2 条, 有效 2 条
+2026-05-05 19:10:51,155 - agent - INFO - Web 搜索: 2 条
+2026-05-05 19:10:51,156 - agent - INFO - 多路召回总计: 4 条 (本地 2 + Web 2)
+2026-05-05 19:10:51,156 - agent - INFO - Rerank 结果: 3 条 (本地 1 + Web 2)
+2026-05-05 19:11:53,832 - agent - INFO - Web 搜索解析: 原始 2 条, 有效 2 条
+2026-05-05 19:11:53,833 - agent - INFO - 本地检索: 2 条
+2026-05-05 19:11:53,833 - agent - INFO - Web 搜索解析: 原始 2 条, 有效 2 条
+2026-05-05 19:11:53,834 - agent - INFO - Web 搜索: 2 条
+2026-05-05 19:11:53,834 - agent - INFO - 多路召回总计: 4 条 (本地 2 + Web 2)
+2026-05-05 19:11:53,835 - agent - INFO - 本地检索: 2 条
+2026-05-05 19:11:53,835 - agent - INFO - Web 搜索解析: 原始 2 条, 有效 2 条
+2026-05-05 19:11:53,835 - agent - INFO - Web 搜索: 2 条
+2026-05-05 19:11:53,835 - agent - INFO - 多路召回总计: 4 条 (本地 2 + Web 2)
+2026-05-05 19:11:53,835 - agent - INFO - Rerank 结果: 3 条 (本地 1 + Web 2)
+2026-05-05 19:13:18,032 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-05 19:13:18,116 - agent - INFO - 使用增强版 Reranker（阈值: 0.25, 去重: 0.80, 模式: qa, 自动: True）
+2026-05-05 19:13:18,116 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-05 19:13:18,120 - agent - INFO - 初始化 HybridRAG（Web: 5条, 本地: 15条, Rerank: Top-5, 阈值: 0.25）
+2026-05-05 19:13:22,608 - agent - INFO - 去重处理: 3 docs → 2 docs (过滤了 1 个重复)
+2026-05-05 19:13:22,608 - agent - INFO - Rerank 完成: 20 docs → 2 docs (阈值: 0.25)
+2026-05-05 19:13:23,928 - agent - INFO - 本地检索: 15 条
+2026-05-05 19:13:23,942 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-05 19:13:23,945 - agent - INFO - 使用增强版 Reranker（阈值: 0.25, 去重: 0.80, 模式: qa, 自动: True）
+2026-05-05 19:13:23,945 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-05 19:13:23,948 - agent - INFO - 初始化 HybridRAG（Web: 5条, 本地: 15条, Rerank: Top-5, 阈值: 0.25）
+2026-05-05 19:13:23,958 - agent - ERROR - Web 搜索失败: 'StructuredTool' object is not callable
+2026-05-05 19:13:23,958 - agent - INFO - 多路召回总计: 15 条 (本地 15 + Web 0)
+2026-05-05 19:13:25,644 - agent - INFO - 去重处理: 3 docs → 2 docs (过滤了 1 个重复)
+2026-05-05 19:13:25,645 - agent - INFO - Rerank 完成: 15 docs → 2 docs (阈值: 0.25)
+2026-05-05 19:13:25,645 - agent - INFO - Rerank 结果: 2 条 (本地 2 + Web 0)
+2026-05-05 19:13:39,573 - agent - INFO - Web 搜索解析: 原始 2 条, 有效 2 条
+2026-05-05 19:13:39,574 - agent - INFO - 本地检索: 2 条
+2026-05-05 19:13:39,574 - agent - INFO - Web 搜索解析: 原始 2 条, 有效 2 条
+2026-05-05 19:13:39,574 - agent - INFO - Web 搜索: 2 条
+2026-05-05 19:13:39,574 - agent - INFO - 多路召回总计: 4 条 (本地 2 + Web 2)
+2026-05-05 19:13:39,576 - agent - INFO - 本地检索: 2 条
+2026-05-05 19:13:39,576 - agent - INFO - Web 搜索解析: 原始 2 条, 有效 2 条
+2026-05-05 19:13:39,576 - agent - INFO - Web 搜索: 2 条
+2026-05-05 19:13:39,576 - agent - INFO - 多路召回总计: 4 条 (本地 2 + Web 2)
+2026-05-05 19:13:39,576 - agent - INFO - Rerank 结果: 3 条 (本地 1 + Web 2)
+2026-05-05 19:14:04,824 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-05 19:14:04,892 - agent - INFO - 使用增强版 Reranker（阈值: 0.25, 去重: 0.80, 模式: qa, 自动: True）
+2026-05-05 19:14:04,893 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-05 19:14:04,896 - agent - INFO - 初始化 HybridRAG（Web: 5条, 本地: 15条, Rerank: Top-5, 阈值: 0.25）
+2026-05-05 19:14:14,358 - agent - INFO - Rerank 完成: 20 docs → 3 docs (阈值: 0.25)
+2026-05-05 19:14:15,858 - agent - INFO - 本地检索: 15 条
+2026-05-05 19:14:15,867 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-05 19:14:15,871 - agent - INFO - 使用增强版 Reranker（阈值: 0.25, 去重: 0.80, 模式: qa, 自动: True）
+2026-05-05 19:14:15,871 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-05 19:14:15,874 - agent - INFO - 初始化 HybridRAG（Web: 5条, 本地: 15条, Rerank: Top-5, 阈值: 0.25）
+2026-05-05 19:14:17,523 - agent - INFO - Web 搜索解析: 原始 5 条, 有效 5 条
+2026-05-05 19:14:17,524 - agent - INFO - Web 搜索: 5 条
+2026-05-05 19:14:17,524 - agent - INFO - 多路召回总计: 20 条 (本地 15 + Web 5)
+2026-05-05 19:14:20,798 - agent - INFO - Rerank 完成: 20 docs → 5 docs (阈值: 0.25)
+2026-05-05 19:14:20,798 - agent - INFO - Rerank 结果: 5 条 (本地 0 + Web 5)
+2026-05-05 19:14:54,589 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-05 19:14:54,637 - agent - INFO - 使用增强版 Reranker（阈值: 0.25, 去重: 0.80, 模式: qa, 自动: True）
+2026-05-05 19:14:54,638 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-05 19:14:54,640 - agent - INFO - 初始化 HybridRAG（Web: 5条, 本地: 15条, Rerank: Top-5, 阈值: 0.25）
+2026-05-05 19:15:00,024 - agent - INFO - Rerank 完成: 20 docs → 3 docs (阈值: 0.25)
+2026-05-05 19:15:01,640 - agent - INFO - 本地检索: 15 条
+2026-05-05 19:15:01,646 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-05 19:15:01,650 - agent - INFO - 使用增强版 Reranker（阈值: 0.25, 去重: 0.80, 模式: qa, 自动: True）
+2026-05-05 19:15:01,650 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-05 19:15:01,654 - agent - INFO - 初始化 HybridRAG（Web: 5条, 本地: 15条, Rerank: Top-5, 阈值: 0.25）
+2026-05-05 19:15:03,162 - agent - INFO - Web 搜索解析: 原始 5 条, 有效 5 条
+2026-05-05 19:15:03,163 - agent - INFO - Web 搜索: 5 条
+2026-05-05 19:15:03,163 - agent - INFO - 多路召回总计: 20 条 (本地 15 + Web 5)
+2026-05-05 19:15:05,028 - agent - INFO - Rerank 完成: 20 docs → 5 docs (阈值: 0.25)
+2026-05-05 19:15:05,029 - agent - INFO - Rerank 结果: 5 条 (本地 0 + Web 5)
+2026-05-05 19:17:08,470 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-05 19:17:08,528 - agent - INFO - 使用增强版 Reranker（阈值: 0.25, 去重: 0.80, 模式: qa, 自动: True）
+2026-05-05 19:17:08,529 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-05 19:17:08,533 - agent - INFO - 初始化 HybridRAG（Web: 5条, 本地: 15条, Rerank: Top-5, 阈值: 0.25）
+2026-05-05 19:17:12,229 - agent - INFO - Rerank 完成: 20 docs → 3 docs (阈值: 0.25)
+2026-05-05 19:17:43,042 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-05 19:17:43,100 - agent - INFO - 使用增强版 Reranker（阈值: 0.25, 去重: 0.80, 模式: qa, 自动: True）
+2026-05-05 19:17:43,101 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-05 19:17:43,105 - agent - INFO - 初始化 HybridRAG（Web: 5条, 本地: 15条, Rerank: Top-5, 阈值: 0.25）
+2026-05-05 19:17:49,959 - agent - INFO - Rerank 完成: 20 docs → 1 docs (阈值: 0.25)
+2026-05-05 19:17:51,422 - agent - INFO - 本地检索: 15 条
+2026-05-05 19:17:51,429 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-05 19:17:51,433 - agent - INFO - 使用增强版 Reranker（阈值: 0.25, 去重: 0.80, 模式: qa, 自动: True）
+2026-05-05 19:17:51,433 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-05 19:17:51,437 - agent - INFO - 初始化 HybridRAG（Web: 5条, 本地: 15条, Rerank: Top-5, 阈值: 0.25）
+2026-05-05 19:17:53,161 - agent - INFO - Web 搜索解析: 原始 5 条, 有效 5 条
+2026-05-05 19:17:53,162 - agent - INFO - Web 搜索: 5 条
+2026-05-05 19:17:53,162 - agent - INFO - 多路召回总计: 20 条 (本地 15 + Web 5)
+2026-05-05 19:17:55,005 - agent - INFO - Rerank 完成: 20 docs → 5 docs (阈值: 0.25)
+2026-05-05 19:17:55,005 - agent - INFO - Rerank 结果: 5 条 (本地 0 + Web 5)
+2026-05-05 21:29:26,023 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-05 21:29:26,155 - agent - INFO - Text splitter: chunk_size=512 chunk_overlap=80 separators=9级
+2026-05-05 21:29:26,859 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\commonsense_ai_introduction.txt (4 chunks)
+2026-05-05 21:29:27,426 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\commonsense_language_culture_reasoning.txt (3 chunks)
+2026-05-05 21:29:28,172 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\commonsense_nature_and_daily_life.txt (3 chunks)
+2026-05-05 21:29:28,814 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\cs_algorithm_datastructure.txt (1 chunks)
+2026-05-05 21:29:29,377 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\cs_basic_architecture.txt (1 chunks)
+2026-05-05 21:29:29,876 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\cs_database_basics.txt (1 chunks)
+2026-05-05 21:29:30,570 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\cs_network_basics.txt (1 chunks)
+2026-05-05 21:29:31,101 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\cs_os_basics.txt (1 chunks)
+2026-05-05 21:29:31,621 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\cs_rag_and_ml_basics.txt (1 chunks)
+2026-05-05 21:29:32,224 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_agriculture_food_health.txt (1 chunks)
+2026-05-05 21:29:32,917 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_arts_literature_intro.txt (3 chunks)
+2026-05-05 21:29:33,844 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_astronomy_earth_science.txt (6 chunks)
+2026-05-05 21:29:34,794 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_biology_ecology.txt (7 chunks)
+2026-05-05 21:29:35,543 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_civics_law_basics.txt (3 chunks)
+2026-05-05 21:29:36,134 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_cybersecurity_literacy.txt (2 chunks)
+2026-05-05 21:29:36,841 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_economics_finance_basics.txt (7 chunks)
+2026-05-05 21:29:37,455 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_education_learning_science.txt (5 chunks)
+2026-05-05 21:29:38,060 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_environment_climate.txt (2 chunks)
+2026-05-05 21:29:40,082 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_history_outline.txt (17 chunks)
+2026-05-05 21:29:41,067 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_math_probability_statistics.txt (8 chunks)
+2026-05-05 21:29:41,802 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_philosophy_ethics_intro.txt (1 chunks)
+2026-05-05 21:29:42,861 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_physics_chemistry_basics.txt (10 chunks)
+2026-05-05 21:29:43,701 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_psychology_cognition_biases.txt (9 chunks)
+2026-05-05 21:29:44,445 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_workplace_professional_skills.txt (6 chunks)
+2026-05-05 21:29:44,445 - agent - INFO - Ingest scan finished (24 paths under C:\Users\lenovo\Desktop\rag\agent\data)
+2026-05-05 21:30:40,744 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-05 21:30:40,869 - agent - INFO - Text splitter: chunk_size=512 chunk_overlap=80 separators=9级
+2026-05-05 21:30:41,898 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\commonsense_ai_introduction.txt (4 chunks)
+2026-05-05 21:30:42,485 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\commonsense_language_culture_reasoning.txt (3 chunks)
+2026-05-05 21:30:43,264 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\commonsense_nature_and_daily_life.txt (3 chunks)
+2026-05-05 21:30:43,803 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\cs_algorithm_datastructure.txt (1 chunks)
+2026-05-05 21:30:44,307 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\cs_basic_architecture.txt (1 chunks)
+2026-05-05 21:30:44,870 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\cs_database_basics.txt (1 chunks)
+2026-05-05 21:30:45,641 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\cs_network_basics.txt (1 chunks)
+2026-05-05 21:30:46,399 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\cs_os_basics.txt (1 chunks)
+2026-05-05 21:30:47,091 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\cs_rag_and_ml_basics.txt (1 chunks)
+2026-05-05 21:30:47,818 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_agriculture_food_health.txt (1 chunks)
+2026-05-05 21:30:48,654 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_arts_literature_intro.txt (3 chunks)
+2026-05-05 21:30:49,833 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_astronomy_earth_science.txt (6 chunks)
+2026-05-05 21:30:51,066 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_biology_ecology.txt (7 chunks)
+2026-05-05 21:30:51,930 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_civics_law_basics.txt (3 chunks)
+2026-05-05 21:30:52,671 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_cybersecurity_literacy.txt (2 chunks)
+2026-05-05 21:30:53,697 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_economics_finance_basics.txt (7 chunks)
+2026-05-05 21:30:54,547 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_education_learning_science.txt (5 chunks)
+2026-05-05 21:30:55,337 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_environment_climate.txt (2 chunks)
+2026-05-05 21:30:57,784 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_history_outline.txt (17 chunks)
+2026-05-05 21:30:58,781 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_math_probability_statistics.txt (8 chunks)
+2026-05-05 21:30:59,551 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_philosophy_ethics_intro.txt (1 chunks)
+2026-05-05 21:31:01,099 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_physics_chemistry_basics.txt (10 chunks)
+2026-05-05 21:31:02,525 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_psychology_cognition_biases.txt (9 chunks)
+2026-05-05 21:31:03,503 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_workplace_professional_skills.txt (6 chunks)
+2026-05-05 21:31:03,503 - agent - INFO - Ingest scan finished (24 paths under C:\Users\lenovo\Desktop\rag\agent\data)
+2026-05-05 21:43:57,114 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-05 21:43:57,268 - agent - INFO - Text splitter: chunk_size=512 chunk_overlap=80 separators=9级
+2026-05-05 21:43:57,272 - agent - INFO - 使用增强版 Reranker（阈值: 0.25, 去重: 0.80, 模式: qa, 自动: True）
+2026-05-05 21:43:57,291 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-05 21:43:57,316 - agent - INFO - Text splitter: chunk_size=512 chunk_overlap=80 separators=9级
+2026-05-05 21:43:57,318 - agent - INFO - 初始化 HybridRAG（Web: 5条, 本地: 15条, Rerank: Top-5, 阈值: 0.25）
+2026-05-05 21:46:46,479 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-05 21:46:46,585 - agent - INFO - Text splitter: chunk_size=512 chunk_overlap=80 separators=9级
+2026-05-05 21:46:47,592 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\commonsense_ai_introduction.txt (4 chunks)
+2026-05-05 21:46:48,405 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\commonsense_language_culture_reasoning.txt (3 chunks)
+2026-05-05 21:46:49,225 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\commonsense_nature_and_daily_life.txt (3 chunks)
+2026-05-05 21:46:49,961 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\cs_algorithm_datastructure.txt (1 chunks)
+2026-05-05 21:46:50,667 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\cs_basic_architecture.txt (1 chunks)
+2026-05-05 21:46:51,430 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\cs_database_basics.txt (1 chunks)
+2026-05-05 21:46:52,217 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\cs_network_basics.txt (1 chunks)
+2026-05-05 21:46:53,142 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\cs_os_basics.txt (1 chunks)
+2026-05-05 21:46:54,036 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\cs_rag_and_ml_basics.txt (1 chunks)
+2026-05-05 21:46:54,972 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_agriculture_food_health.txt (1 chunks)
+2026-05-05 21:46:55,955 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_arts_literature_intro.txt (3 chunks)
+2026-05-05 21:46:57,201 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_astronomy_earth_science.txt (6 chunks)
+2026-05-05 21:46:58,493 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_biology_ecology.txt (7 chunks)
+2026-05-05 21:46:59,364 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_civics_law_basics.txt (3 chunks)
+2026-05-05 21:47:00,338 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_cybersecurity_literacy.txt (2 chunks)
+2026-05-05 21:47:01,422 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_economics_finance_basics.txt (7 chunks)
+2026-05-05 21:47:02,312 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_education_learning_science.txt (5 chunks)
+2026-05-05 21:47:03,353 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_environment_climate.txt (2 chunks)
+2026-05-05 21:47:05,432 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_history_outline.txt (17 chunks)
+2026-05-05 21:47:06,360 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_math_probability_statistics.txt (8 chunks)
+2026-05-05 21:47:07,044 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_philosophy_ethics_intro.txt (1 chunks)
+2026-05-05 21:47:08,270 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_physics_chemistry_basics.txt (10 chunks)
+2026-05-05 21:47:09,247 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_psychology_cognition_biases.txt (9 chunks)
+2026-05-05 21:47:10,427 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_workplace_professional_skills.txt (6 chunks)
+2026-05-05 21:47:10,427 - agent - INFO - Ingest scan finished (24 paths under C:\Users\lenovo\Desktop\rag\agent\data)

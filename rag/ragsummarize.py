@@ -1,5 +1,5 @@
 import re
-from typing import List, Tuple, Optional
+from typing import List, Tuple
 
 from utils.prompts_hander import get_rag_prompt
 from utils.config_hander import rerank_config
@@ -12,10 +12,6 @@ from langchain_core.documents import Document
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough, RunnableLambda
 from langchain_core.prompts import PromptTemplate
-
-# 导入 Web 搜索工具
-from tools.agent_tool import web_search
-
 
 def _format_docs(docs: list[Document]) -> str:
     parts = []
@@ -241,6 +237,8 @@ class HybridRAG:
     def _multi_retrieve(self, query: str) -> List[Document]:
         """多路召回：Web 搜索 + 本地向量检索"""
         all_docs = []
+        local_docs: List[Document] = []
+        web_docs: List[Document] = []
 
         # 1. 本地向量库检索
         try:
@@ -254,7 +252,16 @@ class HybridRAG:
 
         # 2. Web 搜索
         try:
-            web_text = web_search(query, max_results=self.web_max_results)
+            # 延迟导入，避免 rag.ragsummarize 与 tools.agent_tool 的循环导入
+            from tools.agent_tool import web_search
+
+            # web_search 在 tools 中被 @tool 装饰后是 StructuredTool，需用 invoke 调用
+            if hasattr(web_search, "invoke"):
+                web_text = web_search.invoke(
+                    {"query": query, "max_results": self.web_max_results}
+                )
+            else:
+                web_text = web_search(query, max_results=self.web_max_results)
             web_docs = self._parse_web_results(web_text)
             all_docs.extend(web_docs)
             logger.info("Web 搜索: %d 条", len(web_docs))
@@ -266,8 +273,7 @@ class HybridRAG:
             return []
 
         logger.info("多路召回总计: %d 条 (本地 %d + Web %d)",
-                   len(all_docs), len(local_docs) if 'local_docs' in dir() else 0,
-                   len(web_docs) if 'web_docs' in dir() else 0)
+                   len(all_docs), len(local_docs), len(web_docs))
 
         return all_docs
 

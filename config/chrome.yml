@@ -26,10 +26,25 @@ allow_knowledge_file_types:
   - ".ppt"
   - ".pptx"
 
-# 分块大小（字符量，需与模型上下文搭配调整）
-chunk_size: 800
-# 相邻分块重叠长度，减轻切断句子造成的信息丢失
-chunk_overlap: 300
+# 分块大小（字符量，中文语料常见 300～800；与 embedding / 上下文搭配可调）
+chunk_size: 512
+# 相邻分块重叠：建议约为 chunk_size 的 10%～20%（或 50～120 字），减轻断句信息丢失、控制冗余
+chunk_overlap: 80
 
-# RecursiveCharacterTextSplitter 主分隔符（JSON/YAML 中 \\n 表示换行）
-separator: "\n\n"
+# RecursiveCharacterTextSplitter 多级分隔符（由粗到细回退；最后一项 "" 为字符级兜底）
+# 仍支持旧键 separator: 单字符串（仅一项）；优先使用本列表
+separators:
+  - "\n\n"
+  - "\n"
+  - "。"
+  - "！"
+  - "？"
+  - "；"
+  - "，"
+  - " "
+  - ""
+
+# 2.3 结构化分块：按标题/章节预分段后再做递归切块；chunk 携带 section 等 metadata
+structured_chunking_enabled: true
+# 为每个最终 chunk 增加「【章节】…」前缀，便于向量化与 Rerank 感知章节语义（仅当该 chunk 有 section 元数据时）
+structured_chunk_prepend_section: true
