@@ -35,3 +35,15 @@ rag_config = load_rag_config()
 agent_config = load_agent_config()
 prompt_config = load_prompt_config()
 chroma_config = load_chroma_config()
+
+# Rerank 配置（从 rag.yml 读取，提供默认值）
+rerank_config = {
+    "enabled": rag_config.get("rerank_enabled", True),
+    "model": rag_config.get("rerank_model", "qwen3-rerank"),
+    "top_n": rag_config.get("rerank_top_n", 5),
+    "vector_search_k": rag_config.get("rerank_search_k", 20),
+    # 增强版配置
+    "enhanced": rag_config.get("rerank_enhanced", True),
+    "score_threshold": rag_config.get("rerank_score_threshold", 0.4),
+    "instruct": rag_config.get("rerank_instruct"),
+}

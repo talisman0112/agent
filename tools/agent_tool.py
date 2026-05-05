@@ -14,6 +14,7 @@ from __future__ import annotations
 import ast
 import json
 import operator
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -322,6 +323,144 @@ def geocode_place(place_name: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# 联网搜索（DuckDuckGo，免 API Key）
+# ---------------------------------------------------------------------------
+
+
+def _clean_html(text: str) -> str:
+    """移除 HTML 标签并解码实体字符。"""
+    # 移除 script 和 style 内容
+    text = re.sub(r'<(script|style)[^>]*>[^<]*</\1>', '', text, flags=re.DOTALL)
+    # 移除 HTML 标签
+    text = re.sub(r'<[^>]+>', '', text)
+    # 解码常见 HTML 实体
+    text = text.replace('&quot;', '"').replace('&amp;', '&')
+    text = text.replace('&lt;', '<').replace('&gt;', '>')
+    text = text.replace('&nbsp;', ' ')
+    # 压缩空白
+    text = ' '.join(text.split())
+    return text.strip()
+
+
+@tool(
+    description=(
+        "使用 DuckDuckGo 搜索引擎查询实时信息、新闻、百科知识等。"
+        "适用于回答需要最新数据的问题，如时事新闻、产品信息、特定人物/作品/概念等。"
+        "当用户询问模型训练数据之外的内容（如'最新'、'最近'、'今天'等时效性词汇）时应优先使用。"
+        "query 应尽量简洁明确，包含关键实体名称。"
+    )
+)
+def web_search(query: str, max_results: int = 5) -> str:
+    """
+    使用 DuckDuckGo HTML 接口进行搜索。
+    注意：这是非官方接口，适合演示与小流量场景；生产环境建议使用官方 API。
+    """
+    q = (query or "").strip()
+    if not q:
+        return "搜索关键词为空，请提供要查询的内容。"
+
+    max_results = max(1, min(int(max_results), 10))
+
+    try:
+        # 使用 DuckDuckGo HTML 版（免 JS 版本更稳定）
+        params = urllib.parse.urlencode({"q": q, "kl": "zh-cn", "df": ""})
+        url = f"https://html.duckduckgo.com/html/?{params}"
+
+        req = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/120.0.0.0 Safari/537.0"
+                ),
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+            },
+        )
+
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            html = resp.read().decode("utf-8", errors="ignore")
+
+        results = []
+
+        # 解析搜索结果 - DuckDuckGo HTML 结构
+        # 每个结果在 .result 或 .web-result 容器中
+        result_blocks = re.findall(
+            r'<div class="result[^"]*"[^>]*>.*?</div>\s*</div>\s*</div>',
+            html,
+            re.DOTALL,
+        )
+
+        if not result_blocks:
+            # 尝试备选解析模式
+            result_blocks = re.findall(
+                r'<div[^>]*class="[^"]*result[^"]*"[^>]*>.*?<a[^>]*href="([^"]*)"[^>]*>(.*?)</a>',
+                html,
+                re.DOTALL,
+            )
+
+        for block in result_blocks[:max_results]:
+            # 提取链接
+            link_match = re.search(r'<a[^>]*href="([^"]*)"[^>]*class="[^"]*result__a[^"]*"[^>]*>', block)
+            if not link_match:
+                link_match = re.search(r'<a[^>]*href="([^"]*)"[^>]*>', block)
+            link = link_match.group(1) if link_match else ""
+
+            # 提取标题
+            title_match = re.search(r'<a[^>]*class="[^"]*result__a[^"]*"[^>]*>(.*?)</a>', block, re.DOTALL)
+            if title_match:
+                title = _clean_html(title_match.group(1))
+            else:
+                title = "无标题"
+
+            # 提取摘要
+            snippet_match = re.search(
+                r'<a[^>]*class="[^"]*result__snippet[^"]*"[^>]*>(.*?)</a>', block, re.DOTALL
+            )
+            if snippet_match:
+                snippet = _clean_html(snippet_match.group(1))
+            elif '<div class="result__snippet">' in block:
+                snippet_match = re.search(
+                    r'<div class="result__snippet">(.*?)</div>', block, re.DOTALL
+                )
+                snippet = _clean_html(snippet_match.group(1)) if snippet_match else ""
+            else:
+                snippet = ""
+
+            if title and title != "无标题":
+                results.append(f"{len(results) + 1}. {title}\n   链接: {link}\n   摘要: {snippet}\n")
+
+        if not results:
+            # 如果结构化解析失败，尝试简单的备选方案
+            simple_results = re.findall(
+                r'<a[^>]*href="([^"]*)"[^>]*class="[^"]*result__a[^"]*"[^>]*>(.*?)</a>',
+                html,
+                re.DOTALL,
+            )
+            for i, (link, title_raw) in enumerate(simple_results[:max_results], 1):
+                title = _clean_html(title_raw)
+                results.append(f"{i}. {title}\n   链接: {link}\n")
+
+        if not results:
+            return f"未找到与「{q}」相关的搜索结果。可能是网络限制或 DuckDuckGo 页面结构变化。"
+
+        return f"DuckDuckGo 搜索结果（{len(results)}条）：\n\n" + "\n".join(results)
+
+    except urllib.error.HTTPError as e:
+        if e.code == 403:
+            return "搜索被拒绝（HTTP 403），可能是请求频率限制或需要验证。请稍后再试。"
+        return f"搜索 HTTP 错误：{e.code}"
+    except urllib.error.URLError as e:
+        reason = getattr(e, "reason", str(e))
+        if "timed out" in str(reason).lower() or "timeout" in str(reason).lower():
+            return "搜索请求超时，请检查网络连接或稍后再试。"
+        return f"搜索网络错误：{reason}"
+    except Exception as e:
+        return f"搜索失败：{str(e)}"
+
+
+# ---------------------------------------------------------------------------
 # 对外导出
 # ---------------------------------------------------------------------------
 
@@ -332,6 +471,7 @@ TOOLS = [
     calculate_arithmetic,
     get_weather_by_location,
     geocode_place,
+    web_search,
 ]
 
 __all__ = [
@@ -343,4 +483,5 @@ __all__ = [
     "calculate_arithmetic",
     "get_weather_by_location",
     "geocode_place",
+    "web_search",
 ]

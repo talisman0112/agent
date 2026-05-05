@@ -7,6 +7,26 @@ chat_model: qwen3-max
 # 文本向量模型名称（用于 Chroma 入库与检索）
 embedding_model: text-embedding-v3
 
+# --- RAG Rerank 配置 ---
+# rerank_enabled: 是否启用 Rerank 精排
+rerank_enabled: true
+# rerank_model: 模型名称，qwen3-rerank(推荐), gte-rerank-v2
+rerank_model: qwen3-rerank
+# rerank_top_n: 精排后保留的文档数量
+rerank_top_n: 5
+# rerank_search_k: 向量检索召回数量（粗排候选数）
+rerank_search_k: 20
+
+# --- 增强版 Rerank 配置（解决评分区分度问题）---
+# rerank_enhanced: 是否使用增强版 Rerank（含阈值过滤、指令引导、混合打分）
+rerank_enhanced: true
+# rerank_score_threshold: 分数阈值（0-1），低于此值的文档会被过滤，提高区分度
+rerank_score_threshold: 0.4
+# rerank_instruct: 评分指令，控制模型偏好 "回答问题" 还是 "语义相似"
+# Q&A模式: "Given a web search query, retrieve relevant passages that answer the query."
+# 语义模式: "Retrieve semantically similar text."
+rerank_instruct: "Given a web search query, retrieve relevant passages that answer the query."
+
 # --- 对话模型（ChatTongyi / DashScope）采样与长度；缺省不写则沿用集成默认行为 ---
 # temperature: 取值越大输出越发散，越小越趋于确定性
 temperature: 0.7
