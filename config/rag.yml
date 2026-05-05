@@ -46,3 +46,23 @@ temperature: 0.7
 max_tokens: 8192
 # top_p:  nucleus sampling，与 Tongyi 的 top_p 字段一致；通常与 temperature 配合调风格
 top_p: 0.9
+
+# --- 多路召回（Hybrid RAG）配置 ---
+# 同时从 Web 搜索和本地知识库召回，经 Rerank 精排后返回最相关结果
+
+# hybrid_enabled: 是否启用多路召回（当为 true 时，优先使用多路召回工具）
+hybrid_enabled: true
+
+# hybrid_web_max_results: Web 搜索返回结果数（建议 3-10）
+hybrid_web_max_results: 5
+
+# hybrid_local_k: 本地向量检索召回数（粗排候选数）
+hybrid_local_k: 15
+
+# hybrid_rerank_top_n: 多路召回后 Rerank 精排保留的 Top-N
+hybrid_rerank_top_n: 5
+
+# hybrid_custom_instruct: 多路召回专用 instruct（可选）
+# 用于指导 Reranker 如何处理来自不同源的文档
+# 示例: "Retrieve relevant passages from both web search and local documents."
+# hybrid_custom_instruct:

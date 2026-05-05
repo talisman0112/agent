@@ -23,10 +23,11 @@ from zoneinfo import ZoneInfo
 
 from langchain_core.tools import tool
 
-from rag.ragsummarize import RAGSummarize, _format_docs
+from rag.ragsummarize import RAGSummarize, HybridRAG, _format_docs
 
 
 _rag = RAGSummarize()
+_hybrid_rag = HybridRAG()  # 多路召回 RAG 实例
 
 
 # ---------------------------------------------------------------------------
@@ -461,12 +462,79 @@ def web_search(query: str, max_results: int = 5) -> str:
 
 
 # ---------------------------------------------------------------------------
+# 多路召回（Hybrid Search）
+# ---------------------------------------------------------------------------
+
+
+@tool(
+    description=(
+        "同时搜索本地知识库和 Web 获取信息，经统一 Rerank 精排后返回最相关的内容。"
+        "适用于需要结合内部文档和外部实时数据的综合性问题，"
+        "如技术问题（查官方文档+最新实践）、人物/公司查询（查库内资料+最新动态）等。"
+        "query 应包含关键实体名称，以便在两个数据源中准确召回。"
+    )
+)
+def hybrid_search(query: str) -> str:
+    """多路召回：本地知识库 + Web 搜索 + Rerank"""
+    q = (query or "").strip()
+    if not q:
+        return "搜索关键词为空，请提供具体问题。"
+
+    try:
+        # 调用 HybridRAG 进行多路召回 + Rerank
+        docs = _hybrid_rag.retrieve_docs(q)
+        if not docs:
+            return "（多路召回未返回相关结果，请尝试其他关键词或扩大搜索范围）"
+
+        # 格式化结果，显示来源渠道
+        parts = []
+        for i, doc in enumerate(docs, start=1):
+            score = doc.metadata.get("rerank_score", 0.0)
+            channel = doc.metadata.get("source_channel", "unknown")
+            source = doc.metadata.get("source", "")
+            channel_label = "本地" if channel == "local" else "Web"
+
+            part = f"参考{i} [{channel_label}] [相关性: {score:.3f}]"
+            if source:
+                part += f"\n来源: {source}"
+            part += f"\n{doc.page_content}"
+            parts.append(part)
+
+        return f"多路召回结果（共{len(docs)}条）：\n\n" + "\n\n".join(parts)
+
+    except Exception as e:
+        return f"多路召回失败：{str(e)}"
+
+
+@tool(
+    description=(
+        "基于多路召回（Web + 本地知识库）回答用户问题。"
+        "先同时从多个数据源检索相关内容，经 Rerank 精排后，"
+        "由大模型基于最相关的参考资料生成回答。"
+        "适用于需要综合内外部信息的复杂问题。"
+    )
+)
+def hybrid_summarize(query: str) -> str:
+    """多路召回 RAG 问答"""
+    q = (query or "").strip()
+    if not q:
+        return "提问为空，请提供具体问题。"
+
+    try:
+        return _hybrid_rag.summarize(q)
+    except Exception as e:
+        return f"问答失败：{str(e)}"
+
+
+# ---------------------------------------------------------------------------
 # 对外导出
 # ---------------------------------------------------------------------------
 
 TOOLS = [
     rag_summarize,
     rag_retrieve,
+    hybrid_search,      # 多路召回检索
+    hybrid_summarize,   # 多路召回问答
     get_local_datetime,
     calculate_arithmetic,
     get_weather_by_location,
@@ -479,6 +547,8 @@ __all__ = [
     "REQUEST_TIMEOUT_SECONDS",
     "rag_summarize",
     "rag_retrieve",
+    "hybrid_search",
+    "hybrid_summarize",
     "get_local_datetime",
     "calculate_arithmetic",
     "get_weather_by_location",
