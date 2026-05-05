@@ -27,10 +27,9 @@ allow_knowledge_file_types:
   - ".pptx"
 
 # 分块大小（字符量，需与模型上下文搭配调整）
-chunk_size: 200
-
+chunk_size: 800
 # 相邻分块重叠长度，减轻切断句子造成的信息丢失
-chunk_overlap: 20
+chunk_overlap: 300
 
 # RecursiveCharacterTextSplitter 主分隔符（JSON/YAML 中 \\n 表示换行）
 separator: "\n\n"

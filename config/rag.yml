@@ -20,12 +20,24 @@ rerank_search_k: 20
 # --- 增强版 Rerank 配置（解决评分区分度问题）---
 # rerank_enhanced: 是否使用增强版 Rerank（含阈值过滤、指令引导、混合打分）
 rerank_enhanced: true
-# rerank_score_threshold: 分数阈值（0-1），低于此值的文档会被过滤，提高区分度
-rerank_score_threshold: 0.4
-# rerank_instruct: 评分指令，控制模型偏好 "回答问题" 还是 "语义相似"
-# Q&A模式: "Given a web search query, retrieve relevant passages that answer the query."
-# 语义模式: "Retrieve semantically similar text."
-rerank_instruct: "Given a web search query, retrieve relevant passages that answer the query."
+# rerank_score_threshold: 分数阈值（0-1），低于此值的文档会被过滤
+rerank_score_threshold: 0.25
+
+# rerank_dedup_threshold: 去重相似度阈值（0-1），超过此值认为是重复文档，默认0.70
+# 值越小越严格（更容易判定为重复），建议范围 0.60-0.85
+rerank_dedup_threshold: 0.80
+
+# rerank_instruct_mode: 预设 instruct 模式
+# 可选: qa(问答), semantic(语义), definition(定义), code(代码), fact(事实), comparison(对比), summary(摘要)
+rerank_instruct_mode: qa
+
+# rerank_auto_instruct: 是否自动根据查询类型选择 instruct（推荐开启）
+rerank_auto_instruct: true
+
+# rerank_custom_instruct: 自定义 instruct（会覆盖模式和自动选择，高级用户可选）
+# 示例1-Q&A: "Given a web search query, retrieve relevant passages that answer the query."
+# 示例2-代码: "Given a technical query, retrieve relevant code snippets or documentation."
+# rerank_custom_instruct:
 
 # --- 对话模型（ChatTongyi / DashScope）采样与长度；缺省不写则沿用集成默认行为 ---
 # temperature: 取值越大输出越发散，越小越趋于确定性

@@ -1,8 +1,10 @@
 """增强版 RAG Rerank 模块 - 解决评分区分度问题"""
 
 import os
-from typing import List, Callable
-from dataclasses import dataclass
+import re
+from typing import List, Callable, Optional
+from dataclasses import dataclass, field
+from enum import Enum
 
 import dashscope
 from dashscope import TextReRank
@@ -11,15 +13,141 @@ from langchain_core.documents import Document
 from utils.log import logger
 
 
+class InstructMode(Enum):
+    """预设的 Instruct 模式"""
+    QA = "qa"                           # 问答检索
+    SEMANTIC = "semantic"               # 语义相似
+    DEFINITION = "definition"           # 定义/概念查找
+    CODE = "code"                       # 代码/技术文档
+    FACT = "fact"                       # 事实核查
+    COMPARISON = "comparison"           # 对比分析
+    SUMMARY = "summary"                 # 摘要总结
+
+
+# 预定义的 Instruct 模板
+INSTRUCT_TEMPLATES = {
+    InstructMode.QA: "Given a web search query, retrieve relevant passages that answer the query.",
+    
+    InstructMode.SEMANTIC: "Retrieve semantically similar text that shares the same core meaning.",
+    
+    InstructMode.DEFINITION: "Given a query about a concept or term, retrieve passages that define or explain it clearly.",
+    
+    InstructMode.CODE: "Given a technical query, retrieve relevant code snippets, API documentation, or technical explanations.",
+    
+    InstructMode.FACT: "Given a factual query, retrieve passages that provide accurate, verifiable information.",
+    
+    InstructMode.COMPARISON: "Given a comparative query, retrieve passages that highlight differences, similarities, or relationships.",
+    
+    InstructMode.SUMMARY: "Given a topic query, retrieve comprehensive passages that summarize key points.",
+}
+
+
+def auto_select_instruct(query: str) -> str:
+    """根据查询内容自动选择合适的 instruct。
+    
+    Args:
+        query: 用户查询
+        
+    Returns:
+        合适的 instruct 字符串
+    """
+    query_lower = query.lower()
+    
+    # 代码相关
+    code_keywords = ['代码', 'code', '函数', 'function', 'api', '类', 'class', 
+                     '报错', 'error', 'exception', 'bug', 'python', 'java', 'c++']
+    if any(kw in query_lower for kw in code_keywords):
+        return INSTRUCT_TEMPLATES[InstructMode.CODE]
+    
+    # 定义/概念相关
+    definition_patterns = [
+        r'什么是', r'什么叫', r'定义', r'概念', r'是什么意思',
+        r'what is', r'what does', r'define', r'meaning of'
+    ]
+    if any(re.search(p, query_lower) for p in definition_patterns):
+        return INSTRUCT_TEMPLATES[InstructMode.DEFINITION]
+    
+    # 对比相关
+    comparison_patterns = [
+        r'区别', r'差异', r'比较', r'对比', r'vs', r'versus',
+        r'difference', r'compare', r'contrast', r'vs\.?'
+    ]
+    if any(re.search(p, query_lower) for p in comparison_patterns):
+        return INSTRUCT_TEMPLATES[InstructMode.COMPARISON]
+    
+    # 事实/数据相关
+    fact_patterns = [
+        r'多少', r'几', r'数据', r'统计', r'时间', r'日期',
+        r'how many', r'how much', r'when', r'what time', r'数据'
+    ]
+    if any(re.search(p, query_lower) for p in fact_patterns):
+        return INSTRUCT_TEMPLATES[InstructMode.FACT]
+    
+    # 默认使用 QA 模式
+    return INSTRUCT_TEMPLATES[InstructMode.QA]
+
+
+def get_instruct(
+    mode: Optional[InstructMode] = None,
+    custom_instruct: Optional[str] = None,
+    query: Optional[str] = None,
+    auto: bool = False
+) -> str:
+    """获取 instruct 的统一接口。
+    
+    优先级：custom_instruct > mode > auto_select > default(QA)
+    
+    Args:
+        mode: 使用预设模式
+        custom_instruct: 自定义 instruct（最高优先级）
+        query: 用户查询（用于 auto 模式）
+        auto: 是否根据查询自动选择
+        
+    Returns:
+        instruct 字符串
+    """
+    # 优先级1: 自定义 instruct
+    if custom_instruct:
+        return custom_instruct
+    
+    # 优先级2: 预设模式
+    if mode and mode in INSTRUCT_TEMPLATES:
+        return INSTRUCT_TEMPLATES[mode]
+    
+    # 优先级3: 自动选择
+    if auto and query:
+        return auto_select_instruct(query)
+    
+    # 默认: QA 模式
+    return INSTRUCT_TEMPLATES[InstructMode.QA]
+
+
 @dataclass
 class RerankConfig:
     """Rerank 配置参数"""
     model: str = "qwen3-rerank"
     top_n: int = 5
     score_threshold: float = 0.25  # 分数阈值，低于此值的文档会被过滤
-    instruct: str = "Given a web search query, retrieve relevant passages that answer the query."
+    
+    # Instruct 配置
+    instruct_mode: InstructMode = InstructMode.QA  # 预设模式
+    custom_instruct: Optional[str] = None  # 自定义 instruct
+    auto_instruct: bool = True  # 是否根据查询自动选择 instruct
     use_instruct: bool = True  # 是否使用指令引导
+    
+    # 去重配置
+    dedup_threshold: float = 0.80  # 去重相似度阈值，默认0.80（越小越严格）
+    
     min_score_gap: float = 0.1  # 期望的最小分数差距
+    
+    def get_instruct_for_query(self, query: str) -> str:
+        """根据查询获取合适的 instruct"""
+        return get_instruct(
+            mode=self.instruct_mode if not self.auto_instruct else None,
+            custom_instruct=self.custom_instruct,
+            query=query,
+            auto=self.auto_instruct
+        )
 
 
 class EnhancedDashScopeReranker:
@@ -48,8 +176,16 @@ class EnhancedDashScopeReranker:
         query: str,
         documents: List[Document],
         vector_scores: List[float] = None,  # 可选：传入向量检索分数进行混合
+        custom_instruct: Optional[str] = None,  # 本次调用的临时自定义 instruct
     ) -> List[Document]:
-        """增强版 Rerank，支持混合打分和阈值过滤。"""
+        """增强版 Rerank，支持混合打分和阈值过滤。
+        
+        Args:
+            query: 用户查询
+            documents: 候选文档
+            vector_scores: 向量检索分数（可选）
+            custom_instruct: 临时自定义 instruct（覆盖配置）
+        """
         if not documents:
             return []
 
@@ -60,6 +196,14 @@ class EnhancedDashScopeReranker:
         texts = [doc.page_content for doc in documents]
 
         try:
+            # 获取本次使用的 instruct
+            if custom_instruct:
+                instruct = custom_instruct
+            else:
+                instruct = self.config.get_instruct_for_query(query)
+            
+            logger.debug("使用 instruct: %s", instruct[:50] + "..." if len(instruct) > 50 else instruct)
+
             # 构建请求参数
             kwargs = {
                 "model": self.config.model,
@@ -71,7 +215,7 @@ class EnhancedDashScopeReranker:
             
             # qwen3-rerank 支持 instruct 参数，可引导评分偏好
             if self.config.use_instruct and self.config.model.startswith("qwen3"):
-                kwargs["instruct"] = self.config.instruct
+                kwargs["instruct"] = instruct
 
             resp = TextReRank.call(**kwargs)
 
@@ -164,7 +308,121 @@ class EnhancedDashScopeReranker:
                 top_n = min(len(sorted_docs), top_n + 2)
                 logger.debug("第一文档明显领先，增加返回数量至 %d", top_n)
         
-        return [doc for doc, _ in sorted_docs[:top_n]]
+        # 去重处理（使用配置中的阈值）
+        unique_docs = self._deduplicate_documents(
+            [doc for doc, _ in sorted_docs[:top_n]], 
+            similarity_threshold=self.config.dedup_threshold
+        )
+        return unique_docs
+    
+    def _deduplicate_documents(self, documents: List[Document], similarity_threshold: float = 0.80) -> List[Document]:
+        """基于内容相似度和来源的去重（更严格版本）。
+
+        Args:
+            documents: 待去重的文档列表
+            similarity_threshold: 相似度阈值，超过此值认为是重复（默认0.80）
+            
+        Returns:
+            去重后的文档列表
+        """
+        if not documents:
+            return []
+        
+        unique_docs = []
+        seen_sources = {}  # 记录已处理的来源和最高分数
+        
+        for doc in documents:
+            is_duplicate = False
+            doc_content = doc.page_content.strip()
+            doc_source = doc.metadata.get("source", "")  # 获取文档来源
+            doc_score = doc.metadata.get("combined_score", doc.metadata.get("rerank_score", 0.0))
+            
+            # 策略1: 同一来源文档，只保留最高分的那个
+            if doc_source:
+                if doc_source in seen_sources:
+                    if doc_score > seen_sources[doc_source]["score"]:
+                        logger.debug("同一来源重复文档，保留高分版本: %s (%.4f > %.4f)", 
+                                   doc_source, doc_score, seen_sources[doc_source]["score"])
+                        # 移除旧的
+                        unique_docs.remove(seen_sources[doc_source]["doc"])
+                        # 更新记录
+                        seen_sources[doc_source] = {"score": doc_score, "doc": doc}
+                    else:
+                        logger.debug("同一来源重复文档，丢弃低分版本: %s (%.4f <= %.4f)",
+                                   doc_source, doc_score, seen_sources[doc_source]["score"])
+                        is_duplicate = True
+                        continue
+                else:
+                    seen_sources[doc_source] = {"score": doc_score, "doc": doc}
+            
+            # 策略2: 内容相似度去重（更严格的阈值）
+            for kept_doc in unique_docs:
+                kept_content = kept_doc.page_content.strip()
+                
+                # 计算相似度
+                similarity = self._calculate_similarity(doc_content, kept_content)
+                
+                if similarity >= similarity_threshold:
+                    kept_score = kept_doc.metadata.get("combined_score", kept_doc.metadata.get("rerank_score", 0.0))
+                    
+                    if doc_score > kept_score:
+                        logger.debug("内容重复，保留高分版本 (%.4f > %.4f, 相似度: %.2f%%)", 
+                                   doc_score, kept_score, similarity * 100)
+                        if kept_doc in unique_docs:
+                            unique_docs.remove(kept_doc)
+                            # 更新来源记录
+                            kept_source = kept_doc.metadata.get("source", "")
+                            if kept_source and kept_source in seen_sources:
+                                del seen_sources[kept_source]
+                        unique_docs.append(doc)
+                        if doc_source:
+                            seen_sources[doc_source] = {"score": doc_score, "doc": doc}
+                    else:
+                        logger.debug("内容重复，丢弃低分版本 (%.4f <= %.4f, 相似度: %.2f%%)",
+                                   doc_score, kept_score, similarity * 100)
+                    
+                    is_duplicate = True
+                    break
+            
+            if not is_duplicate:
+                unique_docs.append(doc)
+        
+        if len(unique_docs) < len(documents):
+            logger.info("去重处理: %d docs → %d docs (过滤了 %d 个重复)", 
+                       len(documents), len(unique_docs), len(documents) - len(unique_docs))
+        
+        return unique_docs
+    
+    def _calculate_similarity(self, text1: str, text2: str) -> float:
+        """计算两段文本的相似度（基于字符级Jaccard）。
+        
+        Args:
+            text1: 第一段文本
+            text2: 第二段文本
+            
+        Returns:
+            相似度 (0.0 - 1.0)
+        """
+        if not text1 or not text2:
+            return 0.0
+        
+        # 使用滑动窗口字符n-gram计算相似度
+        def get_ngrams(text: str, n: int = 3) -> set:
+            """获取字符n-gram集合"""
+            text = text.lower().replace(" ", "").replace("\n", "")
+            return set(text[i:i+n] for i in range(len(text) - n + 1))
+        
+        ngrams1 = get_ngrams(text1)
+        ngrams2 = get_ngrams(text2)
+        
+        if not ngrams1 or not ngrams2:
+            return 0.0
+        
+        # Jaccard相似度
+        intersection = len(ngrams1 & ngrams2)
+        union = len(ngrams1 | ngrams2)
+        
+        return intersection / union if union > 0 else 0.0
 
     def rerank_with_detailed_scores(
         self, query: str, documents: List[Document]
@@ -213,7 +471,10 @@ def get_enhanced_reranker(
     model: str = "qwen3-rerank",
     top_n: int = 5,
     score_threshold: float = 0.3,
-    instruct: str = None,
+    instruct_mode: InstructMode = InstructMode.QA,
+    custom_instruct: str = None,
+    auto_instruct: bool = True,
+    dedup_threshold: float = 0.80,
 ) -> EnhancedDashScopeReranker:
     """工厂函数：创建增强版 Reranker。
 
@@ -221,17 +482,20 @@ def get_enhanced_reranker(
         model: 模型名称
         top_n: 返回数量
         score_threshold: 分数阈值（重要！过滤低质量文档）
-        instruct: 自定义指令，控制评分偏好
+        instruct_mode: 预设 instruct 模式
+        custom_instruct: 自定义 instruct（最高优先级）
+        auto_instruct: 是否根据查询自动选择 instruct
+        dedup_threshold: 去重相似度阈值（默认0.80，越小越严格）
     """
-    # 默认使用 Q&A 检索指令，让模型关注"是否回答问题"
-    default_instruct = "Given a web search query, retrieve relevant passages that answer the query."
-    
     config = RerankConfig(
         model=model,
         top_n=top_n,
         score_threshold=score_threshold,
-        instruct=instruct or default_instruct,
+        instruct_mode=instruct_mode,
+        custom_instruct=custom_instruct,
+        auto_instruct=auto_instruct,
         use_instruct=True,
+        dedup_threshold=dedup_threshold,
     )
     return EnhancedDashScopeReranker(config)
 
@@ -248,30 +512,79 @@ if __name__ == "__main__":
         Document(page_content="机器学习是人工智能的一个分支，专注于数据学习。"),  # 无关
     ]
 
-    print("=" * 60)
-    print("测试：增强版 Rerank 精度")
-    print("=" * 60)
+    print("=" * 70)
+    print("测试：Instruct 参数设计")
+    print("=" * 70)
+
+    # 展示可用的 instruct 模式
+    print("\n【可用的 Instruct 模式】")
+    for mode, template in INSTRUCT_TEMPLATES.items():
+        print(f"  {mode.value}: {template[:60]}...")
+
+    # 测试自动选择
+    print("\n【自动选择 Instruct】")
+    test_queries = [
+        "什么是TCP三次握手？",
+        "Python requests库怎么用？",
+        "TCP和UDP有什么区别？",
+        "2025年中国GDP多少？",
+    ]
+    for query in test_queries:
+        selected = auto_select_instruct(query)
+        print(f"  查询: {query[:25]}...")
+        print(f"  → 选择: {selected[:50]}...")
+        print()
 
     # 对比：普通 vs 增强
     from rag.reranker import get_reranker
     
-    print("\n【1. 普通 Rerank】")
+    print("\n" + "=" * 70)
+    print("【Rerank 效果对比】")
+    print("=" * 70)
+    
+    print("\n1. 普通 Rerank（无语义引导）")
     normal = get_reranker(enabled=True, model="qwen3-rerank", top_n=4)
     result1 = normal.rerank("什么是TCP三次握手？", test_docs)
     for i, doc in enumerate(result1, 1):
         score = doc.metadata.get("rerank_score", 0.0)
         print(f"  {i}. [{score:.4f}] {doc.page_content[:40]}...")
 
-    print("\n【2. 增强版 Rerank（带阈值和指令）】")
-    enhanced = get_enhanced_reranker(
+    print("\n2. 增强版 - Q&A模式（回答问题导向）")
+    enhanced_qa = get_enhanced_reranker(
         model="qwen3-rerank",
         top_n=4,
-        score_threshold=0.4,  # 设置阈值过滤低分
+        score_threshold=0.0,
+        instruct_mode=InstructMode.QA,
+        auto_instruct=False,
     )
-    result2 = enhanced.rerank("什么是TCP三次握手？", test_docs)
+    result2 = enhanced_qa.rerank("什么是TCP三次握手？", test_docs)
     for i, doc in enumerate(result2, 1):
         r_score = doc.metadata.get("rerank_score", 0.0)
-        c_score = doc.metadata.get("combined_score", 0.0)
-        print(f"  {i}. [R:{r_score:.4f}, C:{c_score:.4f}] {doc.page_content[:40]}...")
+        print(f"  {i}. [R:{r_score:.4f}] {doc.page_content[:40]}...")
 
-    print("\n" + "=" * 60)
+    print("\n3. 增强版 - 自动模式（根据查询自动选择）")
+    enhanced_auto = get_enhanced_reranker(
+        model="qwen3-rerank",
+        top_n=4,
+        score_threshold=0.0,
+        auto_instruct=True,
+    )
+    result3 = enhanced_auto.rerank("什么是TCP三次握手？", test_docs)
+    for i, doc in enumerate(result3, 1):
+        r_score = doc.metadata.get("rerank_score", 0.0)
+        print(f"  {i}. [R:{r_score:.4f}] {doc.page_content[:40]}...")
+
+    print("\n4. 增强版 - 带阈值过滤（阈值=0.4）")
+    enhanced_filter = get_enhanced_reranker(
+        model="qwen3-rerank",
+        top_n=4,
+        score_threshold=0.4,
+        auto_instruct=True,
+    )
+    result4 = enhanced_filter.rerank("什么是TCP三次握手？", test_docs)
+    print(f"  过滤后保留: {len(result4)}/{len(test_docs)} 个文档")
+    for i, doc in enumerate(result4, 1):
+        c_score = doc.metadata.get("combined_score", 0.0)
+        print(f"  {i}. [C:{c_score:.4f}] {doc.page_content[:40]}...")
+
+    print("\n" + "=" * 70)

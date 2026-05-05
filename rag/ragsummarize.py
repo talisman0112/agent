@@ -3,7 +3,7 @@ from utils.config_hander import rerank_config
 from model.model import chat_model
 from rag.vector_store import VectorStoreService
 from rag.reranker import get_reranker
-from rag.reranker_enhanced import get_enhanced_reranker
+from rag.reranker_enhanced import get_enhanced_reranker, InstructMode
 from langchain_core.documents import Document
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough, RunnableLambda
@@ -60,15 +60,28 @@ class RAGSummarize:
         
         if is_enhanced:
             # 增强版：带阈值过滤、指令引导、自适应 Top-N
+            # 解析 instruct_mode
+            mode_str = cfg.get("instruct_mode", "qa")
+            try:
+                instruct_mode = InstructMode(mode_str)
+            except ValueError:
+                instruct_mode = InstructMode.QA
+            
             self.reranker = get_enhanced_reranker(
                 model=rerank_model or cfg["model"],
                 top_n=rerank_top_n or cfg["top_n"],
                 score_threshold=score_threshold or cfg.get("score_threshold", 0.4),
-                instruct=cfg.get("instruct"),
+                instruct_mode=instruct_mode,
+                custom_instruct=cfg.get("custom_instruct"),
+                auto_instruct=cfg.get("auto_instruct", True),
+                dedup_threshold=cfg.get("dedup_threshold", 0.80),
             )
             logger = __import__("utils.log", fromlist=["logger"]).logger
-            logger.info("使用增强版 Reranker（阈值: %.2f）", 
-                       score_threshold or cfg.get("score_threshold", 0.4))
+            logger.info("使用增强版 Reranker（阈值: %.2f, 去重: %.2f, 模式: %s, 自动: %s）",
+                       score_threshold or cfg.get("score_threshold", 0.4),
+                       cfg.get("dedup_threshold", 0.80),
+                       mode_str,
+                       cfg.get("auto_instruct", True))
         else:
             # 普通版
             self.reranker = get_reranker(

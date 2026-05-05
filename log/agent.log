@@ -409,3 +409,103 @@
 2026-05-05 18:10:19,084 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
 2026-05-05 18:10:19,752 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
 2026-05-05 18:10:20,757 - agent - INFO - Rerank 完成: 20 docs → 5 docs
+2026-05-05 18:23:32,377 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-05 18:23:32,433 - agent - INFO - 使用增强版 Reranker（阈值: 0.40）
+2026-05-05 18:23:33,401 - agent - WARNING - 无文档通过阈值 0.40，取 Top-2 保底
+2026-05-05 18:23:33,402 - agent - INFO - Rerank 完成: 5 docs → 2 docs (阈值: 0.40)
+2026-05-05 18:23:33,403 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-05 18:23:33,406 - agent - INFO - 使用增强版 Reranker（阈值: 0.40）
+2026-05-05 18:23:34,435 - agent - WARNING - 无文档通过阈值 0.40，取 Top-2 保底
+2026-05-05 18:23:34,436 - agent - INFO - Rerank 完成: 20 docs → 2 docs (阈值: 0.40)
+2026-05-05 18:28:12,535 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-05 18:28:12,609 - agent - INFO - 使用增强版 Reranker（阈值: 0.40）
+2026-05-05 18:28:13,726 - agent - WARNING - 无文档通过阈值 0.40，取 Top-2 保底
+2026-05-05 18:28:13,727 - agent - INFO - Rerank 完成: 5 docs → 2 docs (阈值: 0.40)
+2026-05-05 18:28:13,728 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-05 18:28:13,733 - agent - INFO - 使用增强版 Reranker（阈值: 0.40）
+2026-05-05 18:28:14,780 - agent - WARNING - 无文档通过阈值 0.40，取 Top-2 保底
+2026-05-05 18:28:14,780 - agent - INFO - Rerank 完成: 20 docs → 2 docs (阈值: 0.40)
+2026-05-05 18:28:50,517 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-05 18:28:50,575 - agent - INFO - 使用增强版 Reranker（阈值: 0.40）
+2026-05-05 18:28:51,473 - agent - WARNING - 无文档通过阈值 0.40，取 Top-2 保底
+2026-05-05 18:28:51,474 - agent - INFO - Rerank 完成: 5 docs → 2 docs (阈值: 0.40)
+2026-05-05 18:28:51,475 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-05 18:28:51,479 - agent - INFO - 使用增强版 Reranker（阈值: 0.40）
+2026-05-05 18:28:52,645 - agent - WARNING - 无文档通过阈值 0.40，取 Top-2 保底
+2026-05-05 18:28:52,645 - agent - INFO - Rerank 完成: 20 docs → 2 docs (阈值: 0.40)
+2026-05-05 18:33:48,351 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-05 18:33:48,407 - agent - INFO - 使用增强版 Reranker（阈值: 0.40, 模式: qa, 自动: True）
+2026-05-05 18:33:49,499 - agent - WARNING - 无文档通过阈值 0.40，取 Top-2 保底
+2026-05-05 18:33:49,499 - agent - INFO - Rerank 完成: 5 docs → 2 docs (阈值: 0.40)
+2026-05-05 18:33:49,500 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-05 18:33:49,504 - agent - INFO - 使用增强版 Reranker（阈值: 0.40, 模式: qa, 自动: True）
+2026-05-05 18:33:50,616 - agent - WARNING - 无文档通过阈值 0.40，取 Top-2 保底
+2026-05-05 18:33:50,616 - agent - INFO - Rerank 完成: 20 docs → 2 docs (阈值: 0.40)
+2026-05-05 18:35:41,686 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-05 18:35:42,298 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\commonsense_ai_introduction.txt (1 chunks)
+2026-05-05 18:35:42,791 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\commonsense_language_culture_reasoning.txt (1 chunks)
+2026-05-05 18:35:43,323 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\commonsense_nature_and_daily_life.txt (1 chunks)
+2026-05-05 18:35:43,902 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\cs_algorithm_datastructure.txt (1 chunks)
+2026-05-05 18:35:44,437 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\cs_basic_architecture.txt (1 chunks)
+2026-05-05 18:35:44,974 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\cs_database_basics.txt (1 chunks)
+2026-05-05 18:35:45,455 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\cs_network_basics.txt (1 chunks)
+2026-05-05 18:35:45,946 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\cs_os_basics.txt (1 chunks)
+2026-05-05 18:35:46,463 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\cs_rag_and_ml_basics.txt (1 chunks)
+2026-05-05 18:35:47,005 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_agriculture_food_health.txt (1 chunks)
+2026-05-05 18:35:47,721 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_arts_literature_intro.txt (1 chunks)
+2026-05-05 18:35:48,410 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_astronomy_earth_science.txt (3 chunks)
+2026-05-05 18:35:49,232 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_biology_ecology.txt (4 chunks)
+2026-05-05 18:35:49,858 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_civics_law_basics.txt (1 chunks)
+2026-05-05 18:35:50,467 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_cybersecurity_literacy.txt (1 chunks)
+2026-05-05 18:35:51,173 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_economics_finance_basics.txt (3 chunks)
+2026-05-05 18:35:51,973 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_education_learning_science.txt (3 chunks)
+2026-05-05 18:35:52,597 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_environment_climate.txt (1 chunks)
+2026-05-05 18:35:53,836 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_history_outline.txt (9 chunks)
+2026-05-05 18:35:54,782 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_math_probability_statistics.txt (4 chunks)
+2026-05-05 18:35:55,279 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_philosophy_ethics_intro.txt (1 chunks)
+2026-05-05 18:35:56,163 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_physics_chemistry_basics.txt (5 chunks)
+2026-05-05 18:35:56,906 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_psychology_cognition_biases.txt (4 chunks)
+2026-05-05 18:35:57,793 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_workplace_professional_skills.txt (3 chunks)
+2026-05-05 18:35:57,793 - agent - INFO - Ingest scan finished (24 paths under C:\Users\lenovo\Desktop\rag\agent\data)
+2026-05-05 18:39:27,825 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-05 18:39:27,890 - agent - INFO - 使用增强版 Reranker（阈值: 0.25, 模式: qa, 自动: True）
+2026-05-05 18:39:28,985 - agent - INFO - Rerank 完成: 5 docs → 5 docs (阈值: 0.25)
+2026-05-05 18:39:28,986 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-05 18:39:28,991 - agent - INFO - 使用增强版 Reranker（阈值: 0.25, 模式: qa, 自动: True）
+2026-05-05 18:39:30,132 - agent - INFO - Rerank 完成: 20 docs → 5 docs (阈值: 0.25)
+2026-05-05 18:42:14,304 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-05 18:42:14,365 - agent - INFO - 使用增强版 Reranker（阈值: 0.25, 模式: qa, 自动: True）
+2026-05-05 18:42:15,323 - agent - INFO - Rerank 完成: 5 docs → 5 docs (阈值: 0.25)
+2026-05-05 18:42:15,325 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-05 18:42:15,329 - agent - INFO - 使用增强版 Reranker（阈值: 0.25, 模式: qa, 自动: True）
+2026-05-05 18:42:16,526 - agent - INFO - Rerank 完成: 20 docs → 5 docs (阈值: 0.25)
+2026-05-05 18:45:13,377 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-05 18:45:13,426 - agent - INFO - 使用增强版 Reranker（阈值: 0.25, 模式: qa, 自动: True）
+2026-05-05 18:45:14,495 - agent - INFO - Rerank 完成: 5 docs → 5 docs (阈值: 0.25)
+2026-05-05 18:45:14,497 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-05 18:45:14,501 - agent - INFO - 使用增强版 Reranker（阈值: 0.25, 模式: qa, 自动: True）
+2026-05-05 18:45:15,673 - agent - INFO - Rerank 完成: 20 docs → 5 docs (阈值: 0.25)
+2026-05-05 18:48:32,926 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-05 18:48:32,988 - agent - INFO - 使用增强版 Reranker（阈值: 0.25, 去重: 0.70, 模式: qa, 自动: True）
+2026-05-05 18:48:33,961 - agent - INFO - 去重处理: 5 docs → 2 docs (过滤了 3 个重复)
+2026-05-05 18:48:33,961 - agent - INFO - Rerank 完成: 5 docs → 2 docs (阈值: 0.25)
+2026-05-05 18:48:33,962 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-05 18:48:33,966 - agent - INFO - 使用增强版 Reranker（阈值: 0.25, 去重: 0.70, 模式: qa, 自动: True）
+2026-05-05 18:48:35,067 - agent - INFO - 去重处理: 5 docs → 2 docs (过滤了 3 个重复)
+2026-05-05 18:48:35,067 - agent - INFO - Rerank 完成: 20 docs → 2 docs (阈值: 0.25)
+2026-05-05 18:49:00,860 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-05 18:49:00,911 - agent - INFO - 使用增强版 Reranker（阈值: 0.25, 去重: 0.70, 模式: qa, 自动: True）
+2026-05-05 18:49:02,004 - agent - INFO - 去重处理: 5 docs → 2 docs (过滤了 3 个重复)
+2026-05-05 18:49:02,004 - agent - INFO - Rerank 完成: 5 docs → 2 docs (阈值: 0.25)
+2026-05-05 18:49:02,005 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-05 18:49:02,008 - agent - INFO - 使用增强版 Reranker（阈值: 0.25, 去重: 0.70, 模式: qa, 自动: True）
+2026-05-05 18:49:03,152 - agent - INFO - 去重处理: 5 docs → 2 docs (过滤了 3 个重复)
+2026-05-05 18:49:03,153 - agent - INFO - Rerank 完成: 20 docs → 2 docs (阈值: 0.25)
+2026-05-05 18:49:25,968 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-05 18:49:26,014 - agent - INFO - 使用增强版 Reranker（阈值: 0.25, 去重: 0.70, 模式: qa, 自动: True）
+2026-05-05 18:49:26,968 - agent - INFO - 去重处理: 5 docs → 2 docs (过滤了 3 个重复)
+2026-05-05 18:49:26,968 - agent - INFO - Rerank 完成: 5 docs → 2 docs (阈值: 0.25)
+2026-05-05 18:49:26,970 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-05 18:49:26,973 - agent - INFO - 使用增强版 Reranker（阈值: 0.25, 去重: 0.70, 模式: qa, 自动: True）
+2026-05-05 18:49:28,093 - agent - INFO - 去重处理: 5 docs → 2 docs (过滤了 3 个重复)
+2026-05-05 18:49:28,093 - agent - INFO - Rerank 完成: 20 docs → 2 docs (阈值: 0.25)

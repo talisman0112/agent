@@ -45,5 +45,9 @@ rerank_config = {
     # 增强版配置
     "enhanced": rag_config.get("rerank_enhanced", True),
     "score_threshold": rag_config.get("rerank_score_threshold", 0.4),
-    "instruct": rag_config.get("rerank_instruct"),
+    "dedup_threshold": rag_config.get("rerank_dedup_threshold", 0.80),
+    # Instruct 配置
+    "instruct_mode": rag_config.get("rerank_instruct_mode", "qa"),
+    "auto_instruct": rag_config.get("rerank_auto_instruct", True),
+    "custom_instruct": rag_config.get("rerank_custom_instruct"),
 }
