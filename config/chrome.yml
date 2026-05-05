@@ -48,3 +48,8 @@ separators:
 structured_chunking_enabled: true
 # 为每个最终 chunk 增加「【章节】…」前缀，便于向量化与 Rerank 感知章节语义（仅当该 chunk 有 section 元数据时）
 structured_chunk_prepend_section: true
+
+# 2.4 Parent-child：子块写入 Chroma 做向量检索；父块整段写入 SQLite，命中子块后展开为父块再 Rerank/拼 prompt（见 CHUNK_OPTIMIZATION.md）
+parent_child_enabled: true
+# 父块存储路径（相对项目根）；全量重建索引时可一并删除该文件
+parent_store_sqlite: db/parent_store.sqlite

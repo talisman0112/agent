@@ -1,5 +1,6 @@
 import os
 import sys
+import uuid
 from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parents[1]
@@ -27,6 +28,7 @@ from utils.file_hander import (
 from utils.log import logger
 from utils.path_pool import get_abs_path
 
+from rag.parent_store import ParentChunkStore, expand_child_hits_to_parents
 from rag.structured_chunking import (
     prepend_section_title_to_chunks,
     split_documents_by_sections,
@@ -46,6 +48,15 @@ def _resolve_text_splitter_separators(cfg: dict) -> list[str]:
     if isinstance(legacy, str) and legacy:
         return [legacy]
     return list(_DEFAULT_TEXT_SPLIT_SEPARATORS)
+
+
+def _parent_document_for_store(doc: Document, prepend_section: bool) -> str:
+    """写入父块库的完整正文（与结构化章节前缀策略一致）。"""
+    body = doc.page_content or ""
+    sec = (doc.metadata or {}).get("section")
+    if prepend_section and sec:
+        return f"【章节】{sec}\n\n{body}"
+    return body
 
 
 _EMBED_DISABLED_MSG = (
@@ -99,6 +110,18 @@ class VectorStoreService:
             chroma_config["chunk_overlap"],
             len(split_seps),
         )
+        self.parent_store: ParentChunkStore | None = None
+        if chroma_config.get("parent_child_enabled", False):
+            sqlite_rel = chroma_config.get("parent_store_sqlite", "db/parent_store.sqlite")
+            sqlite_abs = get_abs_path(sqlite_rel)
+            self.parent_store = ParentChunkStore(sqlite_abs)
+            logger.info("Parent-child：父块 SQLite %s", sqlite_abs)
+
+    def expand_retrieval_to_parents(self, documents: list[Document]) -> list[Document]:
+        """将子块向量命中展开为父块（2.4）；未启用或无 store 时原样返回。"""
+        if not chroma_config.get("parent_child_enabled", False):
+            return documents
+        return expand_child_hits_to_parents(documents, self.parent_store)
 
     def get_retriever(self):
         return self.chroma.as_retriever(search_kwargs={"k": chroma_config["k"]})
@@ -145,17 +168,47 @@ class VectorStoreService:
                     continue
                 if chroma_config.get("structured_chunking_enabled", True):
                     document = split_documents_by_sections(document)
-                split_documents = self.spliter.split_documents(document)
-                if chroma_config.get("structured_chunking_enabled", True) and chroma_config.get(
+                prepend_cfg = chroma_config.get("structured_chunking_enabled", True) and chroma_config.get(
                     "structured_chunk_prepend_section", True
-                ):
-                    split_documents = prepend_section_title_to_chunks(split_documents)
+                )
+                use_pc = chroma_config.get("parent_child_enabled", False) and self.parent_store is not None
+
+                if use_pc:
+                    split_documents = []
+                    parent_count = 0
+                    for p_doc in document:
+                        parent_id = str(uuid.uuid4())
+                        parent_text = _parent_document_for_store(p_doc, prepend_cfg)
+                        pmeta = dict(p_doc.metadata or {})
+                        pmeta["parent_id"] = parent_id
+                        self.parent_store.put(parent_id, parent_text, pmeta)
+                        parent_count += 1
+                        kids = self.spliter.split_documents([p_doc])
+                        if prepend_cfg:
+                            kids = prepend_section_title_to_chunks(kids)
+                        for k in kids:
+                            km = {**(k.metadata or {}), "parent_id": parent_id}
+                            split_documents.append(
+                                Document(page_content=k.page_content, metadata=km)
+                            )
+                else:
+                    split_documents = self.spliter.split_documents(document)
+                    if prepend_cfg:
+                        split_documents = prepend_section_title_to_chunks(split_documents)
                 if not split_documents:
                     logger.error("Split produced no chunks: %s", file_path)
                     continue
                 self.chroma.add_documents(split_documents)
                 append_digest(digest)
-                logger.info("Indexed %s (%d chunks)", file_path, len(split_documents))
+                if use_pc:
+                    logger.info(
+                        "Indexed %s (%d child chunks, %d parents)",
+                        file_path,
+                        len(split_documents),
+                        parent_count,
+                    )
+                else:
+                    logger.info("Indexed %s (%d chunks)", file_path, len(split_documents))
             except Exception:
                 logger.error("Error loading file %s", file_path, exc_info=True)
         logger.info("Ingest scan finished (%d paths under %s)", len(paths), data_dir)

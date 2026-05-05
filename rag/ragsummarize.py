@@ -100,6 +100,7 @@ class RAGSummarize:
         """先向量检索，再 Rerank 精排。"""
         # 1. 向量检索（粗排）
         coarse_docs = self.rag_retriever.invoke(query)
+        coarse_docs = self.vector_store.expand_retrieval_to_parents(coarse_docs)
         if not coarse_docs:
             return []
         # 2. Rerank 精排
@@ -243,8 +244,11 @@ class HybridRAG:
         # 1. 本地向量库检索
         try:
             local_docs = self.rag_retriever.invoke(query)
+            local_docs = self.vector_store.expand_retrieval_to_parents(local_docs)
             for doc in local_docs:
-                doc.metadata["source_channel"] = "local"
+                md = dict(doc.metadata) if doc.metadata else {}
+                md["source_channel"] = "local"
+                doc.metadata = md
             all_docs.extend(local_docs)
             logger.info("本地检索: %d 条", len(local_docs))
         except Exception as e:
