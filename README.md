@@ -40,6 +40,8 @@
 
 高层上，每一次用户提问都会进入 **ReAct 式循环**：模型根据系统/动态提示词决定是否调用工具 → 执行工具 → 将工具结果写回对话 → 再生成回复，直到结束。流式输出时，前端只展示 **最终助手文本的增量**；工具调用详情可在展开器与日志中查看。
 
+**数据流要点（与你的「合并再 Rerank」一致）**：在 `hybrid_*` 中，**外网/Web 召回**与**向量库检索**得到的片段先进入**同一合并候选池**，再经 **Rerank 统一精排**；精排后的 Top-N 才是后续使用的「参考资料」。这些资料要么经 `*_retrieve` / `hybrid_search` **原样写入 `ToolMessage`**，由 **Agent 主模型（ChatTongyi）** 结合对话组织最终回答；要么在 `*_summarize` 路径下**先在工具内**用同一批精排资料调用 LLM 生成摘要，再把摘要作为工具返回值交给主模型（主模型仍可继续多轮推理）。
+
 ### 方框图：从用户输入到模型回答（总览）
 
 建议使用等宽字体查看；对应实现主要在 `app.py`、`tools/reactagent.py`、`tools/mid_ware.py`。
@@ -85,8 +87,11 @@
            │                           │
            │                           ▼
            │               ┌─────────────────────────┐
-           │               │ 执行工具 → ToolMessage  │
-           │               │ 结果插入消息，再次推理    │
+           │               │ 执行 RAG / Hybrid 工具   │
+           │               │  向量库检索 +（Hybrid 时 │
+           │               │   Web）→ 合并 → Rerank    │
+           │               │ → 参考资料 → ToolMessage │
+           │               │   再回到主模型推理       │
            │               └────────────┬────────────┘
            │                           │
            └─────────────┬─────────────┘
@@ -103,6 +108,55 @@
      └─────────────────────┘
 ```
 
+### 方框图：合并 → Rerank → 进入 Agent 上下文（核心数据流）
+
+Hybrid 与「仅本地」的差异只在左侧支路：单路 RAG 无 Web，合并池里只有向量库命中。
+
+```
+                        ┌─────────────────────────────────────────┐
+                        │      RAG / Hybrid 工具（一次调用）        │
+┌──────────┐            │                                         │
+│ 用户问题  │───────────│  ┌──────────────┐   ┌──────────────┐   │
+└──────────┘            │  │ 向量库 Chroma │   │ Web 召回      │   │
+  （tool 入参）          │  │ 向量检索 Top-K│   │ （仅 Hybrid） │   │
+                        │  └───────┬──────┘   └──────┬───────┘   │
+                        │          └─────────┬───────┘            │
+                        │                    ▼                    │
+                        │           ┌─────────────────┐           │
+                        │           │   合并候选池     │           │
+                        │           │ 统一 Document   │           │
+                        │           └────────┬────────┘           │
+                        │                    ▼                    │
+                        │           ┌─────────────────┐           │
+                        │           │ Rerank 统一精排  │           │
+                        │           │   Top-N 片段    │           │
+                        │           └────────┬────────┘           │
+                        │                    ▼                    │
+                        │           ┌─────────────────┐           │
+                        │           │ 格式化为参考资料  │           │
+                        │           │ _format_docs …  │           │
+                        │           └────────┬────────┘           │
+                        └────────────────────┼────────────────────┘
+                                             │
+              ┌──────────────────────────────┴──────────────────────────────┐
+              ▼                                                               ▼
+┌─────────────────────────────┐                         ┌─────────────────────────────┐
+│ rag_retrieve / hybrid_search │                         │ rag_summarize /             │
+│                             │                         │ hybrid_summarize            │
+│ 工具返回值 = 精排后参考原文   │                         │ 同上批资料 → 工具内 RAG     │
+│ → ToolMessage               │                         │ Prompt + 子 LLM → 摘要字符串 │
+│ → Agent 主模型阅读后写最终答 │                         │ → ToolMessage（摘要）        │
+│   （ReAct 下一轮）           │                         │ → 主模型可再润色或收束       │
+└─────────────────────────────┘                         └─────────────────────────────┘
+              │                                                               │
+              └───────────────────────────┬───────────────────────────────────┘
+                                          ▼
+                               ┌─────────────────────┐
+                               │ ChatTongyi 主模型    │
+                               │ （对话里继续推理）    │
+                               └─────────────────────┘
+```
+
 ### 端到端数据流（Mermaid，可选对照）
 
 ```mermaid
@@ -114,28 +168,36 @@ flowchart TB
     end
 
     subgraph Agent["ReactAgent（tools/reactagent.py）"]
-        M[组装消息: 历史 HumanMessage/AIMessage + 本轮 HumanMessage]
-        S[agent.stream values + updates]
-        TC[last_tool_calls 摘要]
+        M[组装消息]
+        S[agent.stream]
+        TC[last_tool_calls]
     end
 
     subgraph MW["Middleware（tools/mid_ware.py）"]
-        B[before_model 日志]
-        A[after_model 日志]
         P[dynamic_prompt: report ↔ main]
     end
 
     subgraph Tools["TOOLS（tools/agent_tool.py）"]
-        RAG[rag_summarize / rag_retrieve]
-        HY[hybrid_search / hybrid_summarize]
-        WS[web_search]
-        OT[时间 / 算术 / 天气 / 地理编码]
+        RAG[rag_*]
+        HY[hybrid_*]
+        WS[web_search 等]
     end
 
-    subgraph RAGLayer["RAG 层"]
-        VS[(Chroma)]
-        RR[Rerank 精排]
-        CM[Chat 生成答案]
+    subgraph RAGInner["rag_* / hybrid_* 工具内部"]
+        VS[(Chroma 向量检索)]
+        WEB[Web 召回 仅 hybrid_*]
+        POOL[合并候选池 本地±Web]
+        RR[Rerank 统一精排]
+        REF[Top-N 参考资料]
+        VS --> POOL
+        WEB --> POOL
+        POOL --> RR
+        RR --> REF
+    end
+
+    subgraph BackToAgent["回到主 Agent 对话上下文"]
+        TM[ToolMessage]
+        MAIN[ChatTongyi 主模型读消息再推理]
     end
 
     U --> M
@@ -144,15 +206,15 @@ flowchart TB
     M --> S
     S --> MW
     MW --> Tools
-    RAG --> VS
-    RAG --> RR
-    HY --> VS
-    HY --> WS
-    HY --> RR
-    RAG --> CM
-    HY --> CM
+    RAG --> RAGInner
+    HY --> RAGInner
+    REF --> TM
+    WS -->|独立工具 直接返回| TM
+    TM --> MAIN
     S --> TC
 ```
+
+说明：`rag_*` 仅有 Chroma 支路进入合并池（「合并池」在此仍表示进入 Rerank 前的统一候选列表）。**`rag_summarize` / `hybrid_summarize`** 在工具内会再用 **子 LLM** 消费 `REF` 生成摘要字符串，该字符串同样以 `ToolMessage` 形式回到主模型；**`rag_retrieve` / `hybrid_search`** 则把精排后的参考原文直接作为 `ToolMessage`，由主模型组织最终回答。
 
 ### ReAct 与流式输出（简化）
 
@@ -212,7 +274,7 @@ Agent 将所有工具绑定到 `create_agent`；**具体调用哪几个由模型
 
 ### 单路本地 RAG（`RAGSummarize`）
 
-**方框图**（工具 `rag_summarize` / `rag_retrieve` 内部；`retrieve` 到 Rerank 为止，不调用下方 LLM 作答链）：
+**方框图**（工具 `rag_summarize` / `rag_retrieve`；仅 **向量库** 一路进入候选池，无 Web）：
 
 ```
 ┌─────────────────────┐
@@ -225,7 +287,6 @@ Agent 将所有工具绑定到 `create_agent`；**具体调用哪几个由模型
 │   本地向量库         │
 │      (Chroma)       │
 │   向量检索 Top-K    │
-│  (粗排候选池)        │
 └──────────┬──────────┘
            │
            ▼
@@ -239,16 +300,18 @@ Agent 将所有工具绑定到 `create_agent`；**具体调用哪几个由模型
            │
            ▼
 ┌─────────────────────┐
-│    Top-N 片段        │
-│  拼入 RAG Prompt     │
+│  Top-N 参考资料      │
+│  (_format_docs)     │
 └──────────┬──────────┘
            │
-           ▼
-┌─────────────────────┐
-│  对话模型 LLM        │
-│  生成最终回答        │
-│ (summarize 路径)     │
-└─────────────────────┘
+     ┌─────┴─────┐
+     ▼           ▼
+┌─────────┐ ┌─────────────────────┐
+│rag_     │ │ rag_summarize       │
+│retrieve │ │ 拼 RAG Prompt+子LLM  │
+│ToolMsg  │ │ ToolMsg 为摘要       │
+│→主模型  │ │ →主模型可继续推理    │
+└─────────┘ └─────────────────────┘
 ```
 
 - **粗排**：`rerank_search_k`（默认 20）条向量候选。  
@@ -285,16 +348,24 @@ Agent 将所有工具绑定到 `create_agent`；**具体调用哪几个由模型
                          │
                          ▼
               ┌─────────────────────┐
-              │     Top-N 结果       │
-              │  summarize: 送 LLM   │
-              │  search: 仅返回文本   │
-              └─────────────────────┘
+              │  Top-N 格式化        │
+              │  = Agent 用参考资料   │
+              └──────────┬──────────┘
                          │
-              hybrid_summarize 时 ▼
-              ┌─────────────────────┐
-              │  拼 RAG Prompt       │
-              │  对话模型生成回答     │
-              └─────────────────────┘
+         ┌───────────────┴────────────────┐
+         ▼                                ▼
+┌─────────────────────┐      ┌─────────────────────┐
+│  hybrid_search      │      │  hybrid_summarize     │
+│ ToolMessage：参考原文 │      │ 参考→工具内 RAG+LLM    │
+│ → 主模型写最终回答   │      │ → ToolMessage 为摘要   │
+└─────────────────────┘      └─────────────────────┘
+         │                                │
+         └────────────────┬───────────────┘
+                          ▼
+                 ┌─────────────────────┐
+                 │ Agent 主模型下一轮    │
+                 │ （ReAct 消息链路）   │
+                 └─────────────────────┘
 ```
 
 - 本地文档带 `metadata.source_channel = "local"`，Web 解析结果带 `"web"`，便于观察来源。  
