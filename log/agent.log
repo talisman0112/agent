@@ -810,3 +810,22 @@ requests.exceptions.SSLError: HTTPSConnectionPool(host='dashscope.aliyuncs.com',
 2026-05-06 17:08:16,553 - agent - INFO - 上下文压缩完成: 1494 → 595 tokens (压缩率 60.2%, 策略: extractive, 质量: 1.00)
 2026-05-06 17:08:16,553 - agent - WARNING - LLM 客户端未配置，回退到提取式压缩
 2026-05-06 17:08:16,553 - agent - INFO - 上下文压缩完成: 1494 → 595 tokens (压缩率 60.2%, 策略: hybrid, 质量: 1.00)
+2026-05-07 20:31:49,299 - agent - INFO - 长对话摘要已更新：覆盖 4 条历史消息，摘要长度 21 字符
+2026-05-07 20:31:51,493 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-07 20:31:51,757 - agent - INFO - Text splitter: chunk_size=512 chunk_overlap=80 separators=9级
+2026-05-07 20:31:51,760 - agent - INFO - Parent-child：父块 SQLite C:\Users\lenovo\Desktop\rag\agent\db/parent_store.sqlite
+2026-05-07 20:31:51,760 - agent - INFO - 使用增强版 Reranker（阈值: 0.25, 去重: 0.80, 模式: qa, 自动: True）
+2026-05-07 20:31:51,761 - agent - INFO - 上下文压缩已启用（目标 Token: 3500, 策略: auto）
+2026-05-07 20:31:51,761 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-07 20:31:51,766 - agent - INFO - Text splitter: chunk_size=512 chunk_overlap=80 separators=9级
+2026-05-07 20:31:51,767 - agent - INFO - Parent-child：父块 SQLite C:\Users\lenovo\Desktop\rag\agent\db/parent_store.sqlite
+2026-05-07 20:31:51,767 - agent - INFO - 初始化 HybridRAG（Web: 5条, 本地: 15条, Rerank: Top-5, 阈值: 0.25, 压缩: 启用）
+2026-05-07 20:41:20,068 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-07 20:41:20,342 - agent - INFO - Text splitter: chunk_size=512 chunk_overlap=80 separators=9级
+2026-05-07 20:41:20,358 - agent - INFO - Parent-child：父块 SQLite C:\Users\lenovo\Desktop\rag\agent\db/parent_store.sqlite
+2026-05-07 20:41:20,359 - agent - INFO - 使用增强版 Reranker（阈值: 0.25, 去重: 0.80, 模式: qa, 自动: True）
+2026-05-07 20:41:20,359 - agent - INFO - 上下文压缩已启用（目标 Token: 3500, 策略: auto）
+2026-05-07 20:41:20,360 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-07 20:41:20,368 - agent - INFO - Text splitter: chunk_size=512 chunk_overlap=80 separators=9级
+2026-05-07 20:41:20,372 - agent - INFO - Parent-child：父块 SQLite C:\Users\lenovo\Desktop\rag\agent\db/parent_store.sqlite
+2026-05-07 20:41:20,372 - agent - INFO - 初始化 HybridRAG（Web: 5条, 本地: 15条, Rerank: Top-5, 阈值: 0.25, 压缩: 启用）

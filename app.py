@@ -5,8 +5,10 @@ from pathlib import Path
 
 import streamlit as st
 
+from memory.conversation_memory import ConversationMemoryManager
+from model.model import chat_model
 from tools.reactagent import ReactAgent
-from utils.config_hander import chroma_config
+from utils.config_hander import agent_config, chroma_config
 from utils.file_hander import get_file_md5
 from utils.path_pool import get_abs_path
 
@@ -116,6 +118,21 @@ if "agent" not in st.session_state:
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
+memory_manager = ConversationMemoryManager(
+    llm=chat_model,
+    config={
+        "recent_turns": agent_config.get("conversation_recent_turns", 6),
+        "summary_trigger_turns": agent_config.get("conversation_summary_trigger_turns", 12),
+        "summary_increment_turns": agent_config.get("conversation_summary_increment_turns", 4),
+        "max_history_tokens_before_summary": agent_config.get(
+            "conversation_max_history_tokens_before_summary", 3000
+        ),
+        "summary_max_chars": agent_config.get("conversation_summary_max_chars", 1200),
+    },
+)
+if "conversation_summary" not in st.session_state:
+    st.session_state.conversation_summary = memory_manager.init_summary_state()
+
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
@@ -129,9 +146,17 @@ if prompt:
         assistant_reply = ""
         with st.spinner("Thinking..."):
             try:
+                history = st.session_state.messages
+                summary_state = st.session_state.conversation_summary
+                if memory_manager.should_compact(history, summary_state):
+                    st.session_state.conversation_summary = memory_manager.update_summary(
+                        history, summary_state
+                    )
                 stream = st.session_state.agent.execute(
                     prompt,
-                    conversation_history=st.session_state.messages,
+                    conversation_history=history,
+                    short_term_turns=memory_manager.recent_turns,
+                    memory_summary=st.session_state.conversation_summary.get("summary_text", ""),
                     report_mode=report_mode,
                 )
                 # Streamlit 1.28+：逐 token/片段写入

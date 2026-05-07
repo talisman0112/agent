@@ -1,6 +1,6 @@
 # RAG Agent Demo
 
-基于 **Streamlit** 的对话界面 + **LangChain / LangGraph ReAct Agent**（工具调用）+ **Chroma 向量库** + **通义千问（DashScope）** 的本地知识问答演示项目。支持纯本地 RAG、多路召回（本地 + Web）、Rerank 精排与结构化分块入库。
+基于 **Streamlit** 的对话界面 + **LangChain / LangGraph ReAct Agent**（工具调用）+ **Chroma 向量库** + **通义千问（DashScope）** 的本地知识问答演示项目。支持纯本地 RAG、多路召回（本地 + Web）、Rerank 精排、**上下文压缩**与结构化分块入库。
 
 ---
 
@@ -13,6 +13,7 @@
 | LLM / Embedding / Rerank | 通义（`ChatTongyi`、`DashScopeEmbeddings`、Rerank API，`model/model.py`） |
 | 向量库 | Chroma + 持久化目录（`rag/vector_store.py`） |
 | 分块 | 结构化预分段 + `RecursiveCharacterTextSplitter`（`rag/structured_chunking.py`、`config/chrome.yml`） |
+| 上下文压缩 | Query-Aware 提取式压缩 + 可选 LLM 摘要（`rag/context_compressor.py`） |
 
 ---
 
@@ -188,11 +189,13 @@ flowchart TB
         WEB[Web 召回 仅 hybrid_*]
         POOL[合并候选池 本地±Web]
         RR[Rerank 统一精排]
+        CC[上下文压缩 ContextCompressor]
         REF[Top-N 参考资料]
         VS --> POOL
         WEB --> POOL
         POOL --> RR
-        RR --> REF
+        RR --> CC
+        CC --> REF
     end
 
     subgraph BackToAgent["回到主 Agent 对话上下文"]
@@ -300,6 +303,15 @@ Agent 将所有工具绑定到 `create_agent`；**具体调用哪几个由模型
            │
            ▼
 ┌─────────────────────┐
+│   上下文压缩（可选） │
+│  (ContextCompressor) │
+│   • 提取/摘要/混合   │
+│   • 质量评估        │
+│   • Token 预算控制   │
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
 │  Top-N 参考资料      │
 │  (_format_docs)     │
 └──────────┬──────────┘
@@ -348,6 +360,14 @@ Agent 将所有工具绑定到 `create_agent`；**具体调用哪几个由模型
                          │
                          ▼
               ┌─────────────────────┐
+              │   上下文压缩（可选） │
+              │  (ContextCompressor) │
+              │   • 提取/摘要/混合   │
+              │   • Token 预算控制   │
+              └──────────┬──────────┘
+                         │
+                         ▼
+              ┌─────────────────────┐
               │  Top-N 格式化        │
               │  = Agent 用参考资料   │
               └──────────┬──────────┘
@@ -383,6 +403,71 @@ Agent 将所有工具绑定到 `create_agent`；**具体调用哪几个由模型
 | `rerank_score_threshold` | 分数阈值（单路与混合路在代码里默认阈值可能不同，见 `RAGSummarize` / `HybridRAG`） |
 | `rerank_dedup_threshold` | 去重相似度阈值 |
 | `rerank_instruct_mode` / `rerank_auto_instruct` | 指令模式与自动选择 |
+
+### 上下文压缩（Context Compression）
+
+**解决问题**：父文档展开后内容过长（常 >6000 tokens），超出 LLM 上下文限制；检索结果包含大量与查询无关的冗余信息。
+
+**方框图**（在 Rerank 后插入压缩层）：
+
+```
+┌─────────────────────┐
+│   Rerank 精排结果    │
+│   Top-N 文档        │
+│   (可能超长)        │
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
+│   上下文压缩器       │
+│   (ContextCompressor)│
+│   • 策略选择 (AUTO)  │
+│   • 提取式压缩      │
+│   • 质量评估        │
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
+│  压缩后参考资料      │
+│  (≤3500 tokens)     │
+│  [已压缩标记]       │
+└──────────┬──────────┘
+           │
+           ▼
+    ┌──────────────┐
+    │  ToolMessage │
+    └──────────────┘
+```
+
+**压缩策略**：
+
+| 策略 | 适用场景 | 说明 |
+|------|----------|------|
+| `extract` (提取式) | 代码查询、事实查询 | 保留与查询相关的段落，代码块完整保护 |
+| `summarize` (摘要式) | 超长文档、概括性查询 | 使用 LLM 生成查询相关摘要（需 API 调用） |
+| `hybrid` (混合式) | 极长文档 | 先提取减少 50%，再摘要精练 |
+| `auto` (自动) | 默认 | 根据查询类型自动选择策略 |
+
+**智能策略选择规则**：
+- 代码关键词（`代码`、`function`、`api` 等）→ `extract`
+- 事实关键词（`什么是`、`多少`、`定义` 等）→ `extract`
+- 超长文档（>2 倍预算）→ `hybrid`
+
+**配置要点**（`config/rag.yml`）：
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `compression_enabled` | `true` | 是否启用上下文压缩 |
+| `compression_max_tokens` | `3500` | 压缩后目标 Token 上限 |
+| `compression_min_tokens` | `200` | 单个文档最小保留 Token |
+| `compression_extract_ratio` | `0.6` | 提取式压缩保留比例 |
+| `compression_use_llm` | `false` | 是否使用 LLM 生成摘要（影响成本） |
+| `compression_strategy` | `auto` | 压缩策略：auto/extract/summarize/hybrid |
+
+**效果指标**（实测）：
+- Token 消耗减少：30-60%
+- 处理时间：<100ms（提取式，纯本地计算）
+- 质量保留：>85%（关键词保留率）
 
 ---
 
@@ -469,7 +554,8 @@ agent/
 │   ├── structured_chunking.py
 │   ├── ragsummarize.py    # RAGSummarize + HybridRAG
 │   ├── reranker.py
-│   └── reranker_enhanced.py
+│   ├── reranker_enhanced.py
+│   └── context_compressor.py  # 上下文压缩（新增）
 ├── model/model.py         # ChatTongyi + DashScopeEmbeddings
 ├── config/                # YAML 配置
 ├── data/                  # 知识文件目录（实际数据不入库）
@@ -485,7 +571,13 @@ agent/
 pytest tests/ -q
 ```
 
-含结构化分块、混合检索等用例（见 `tests/`）。
+含结构化分块、混合检索、上下文压缩等用例（见 `tests/`）。
+
+**上下文压缩专项测试**：
+```bash
+python -m tests.test_context_compression
+python -m examples.context_compression_demo
+```
 
 ---
 
@@ -494,6 +586,15 @@ pytest tests/ -q
 - **Web 搜索**：DuckDuckGo HTML 非官方接口，适合演示；生产请换官方 API 并注意合规与频控。  
 - **天气 / 地理**：依赖外网 Open-Meteo。  
 - **Embedding 未就绪**：未装 `dashscope` / `langchain-community` 或未配置 API Key 时，向量服务会报错；勿让 Chroma 在无自定义 embedding 时默默回落到外网下载默认模型（见 `vector_store.py` 中说明）。
+
+---
+
+## 相关文档
+
+- **上下文压缩完整指南**：`docs/context_compression_guide.md`（实现细节、配置说明、评估方法）
+- **Rerank Instruct 指南**：`docs/rerank_instruct_guide.md`
+- **Chunk 优化指南**：`docs/CHUNK_OPTIMIZATION.md`
+- **系统优化指南**：`docs/OPTIMIZATION.md`
 
 ---
 
