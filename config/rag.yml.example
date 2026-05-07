@@ -1,0 +1,127 @@
+# RAG 系统配置文件示例
+# 复制此文件为 rag.yml 并根据需要修改
+
+# ==================== 基础 RAG 配置 ====================
+
+# 向量数据库配置
+vector_store:
+  persist_directory: "./db/chroma"
+  collection_name: "documents"
+
+# 文本切分配置
+chunk_size: 800
+chunk_overlap: 100
+
+# ==================== Rerank 配置 ====================
+
+# 是否启用 Rerank
+rerank_enabled: true
+
+# Rerank 模型选择：qwen3-rerank(推荐) / gte-rerank-v2
+rerank_model: qwen3-rerank
+
+# Rerank 后取 Top-N
+rerank_top_n: 5
+
+# 向量检索召回数量（需 > rerank_top_n）
+rerank_search_k: 20
+
+# ==================== 增强版 Rerank 配置 ====================
+
+# 是否使用增强版 Rerank（推荐启用）
+rerank_enhanced: true
+
+# 分数阈值（低于此值的文档会被过滤）
+rerank_score_threshold: 0.4
+
+# 去重相似度阈值（默认 0.80，越小越严格）
+rerank_dedup_threshold: 0.80
+
+# Instruct 模式：qa / semantic / definition / code / fact / comparison / summary
+rerank_instruct_mode: qa
+
+# 是否根据查询自动选择 instruct 模式
+rerank_auto_instruct: true
+
+# 自定义 instruct（会覆盖模式和自动选择，高级用户可用）
+# rerank_custom_instruct: "Given a technical query, retrieve relevant passages..."
+
+# ==================== 上下文压缩配置（新增） ====================
+
+# 是否启用上下文压缩（推荐启用，解决长文档问题）
+compression_enabled: true
+
+# 压缩后目标 Token 上限（根据 LLM 上下文窗口调整）
+# 建议值：
+#   - 4k 上下文模型: 3000
+#   - 8k 上下文模型: 3500-4000
+#   - 32k+ 上下文模型: 可关闭压缩或设为 8000
+compression_max_tokens: 3500
+
+# 单个文档最小保留 Token（避免过度压缩）
+compression_min_tokens: 200
+
+# 提取式压缩保留比例（默认 60%，即保留最相关的 60% 内容）
+compression_extract_ratio: 0.6
+
+# 是否使用 LLM 进行生成式摘要（需要更多 API 调用，默认关闭）
+# 开启后会增加 LLM 调用次数，但能更好处理超长文档
+compression_use_llm: false
+
+# 压缩质量阈值（低于此值会记录警告日志）
+compression_quality_threshold: 0.7
+
+# 压缩策略：auto / extract / summarize / hybrid
+#   - auto: 自动选择（推荐）
+#   - extract: 仅提取关键段落（信息损失最小）
+#   - summarize: 生成摘要（适合概括性查询）
+#   - hybrid: 先提取再摘要（适合超长文档）
+compression_strategy: auto
+
+# ==================== 多路召回（Hybrid RAG）配置 ====================
+
+# 是否启用多路召回
+hybrid_enabled: true
+
+# Web 搜索返回结果数
+hybrid_web_max_results: 5
+
+# 本地检索召回数
+hybrid_local_k: 15
+
+# 多路召回后 Rerank Top-N
+hybrid_rerank_top_n: 5
+
+# ==================== 父文档存储配置 ====================
+
+# 父文档数据库存储路径
+parent_store_path: "./db/parents.db"
+
+# ==================== 场景化配置示例 ====================
+
+# --- 场景 1: 短文档问答（轻度压缩） ---
+# compression_enabled: true
+# compression_max_tokens: 4000
+# compression_min_tokens: 300
+# compression_extract_ratio: 0.7
+
+# --- 场景 2: 长文档问答（强力压缩） ---
+# compression_enabled: true
+# compression_max_tokens: 3000
+# compression_min_tokens: 150
+# compression_extract_ratio: 0.5
+# compression_use_llm: true  # 超长文档时开启 LLM 摘要
+
+# --- 场景 3: 代码检索（保留完整性） ---
+# compression_enabled: true
+# compression_max_tokens: 4500
+# compression_min_tokens: 400
+# compression_extract_ratio: 0.8
+# compression_strategy: extract  # 固定使用提取模式，不生成摘要
+
+# --- 场景 4: 快速响应（最小化延迟） ---
+# compression_enabled: true
+# compression_max_tokens: 3000
+# compression_use_llm: false  # 禁用 LLM 摘要以减少延迟
+# rerank_enhanced: true
+# rerank_score_threshold: 0.5  # 提高阈值，减少文档数量

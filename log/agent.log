@@ -802,3 +802,11 @@ requests.exceptions.SSLError: HTTPSConnectionPool(host='dashscope.aliyuncs.com',
 2026-05-05 23:53:18,288 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_psychology_cognition_biases.txt (9 child chunks, 5 parents)
 2026-05-05 23:53:22,158 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\knowledge_workplace_professional_skills.txt (6 child chunks, 4 parents)
 2026-05-05 23:53:22,158 - agent - INFO - Ingest scan finished (24 paths under C:\Users\lenovo\Desktop\rag\agent\data)
+2026-05-05 23:58:46,504 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-05 23:58:46,554 - agent - INFO - Text splitter: chunk_size=512 chunk_overlap=80 separators=9级
+2026-05-05 23:58:46,556 - agent - INFO - Parent-child：父块 SQLite C:\Users\lenovo\Desktop\rag\agent\db/parent_store.sqlite
+2026-05-06 17:06:33,947 - agent - WARNING - LLM 客户端未配置，回退到提取式压缩
+2026-05-06 17:06:33,948 - agent - INFO - 上下文压缩完成: 2010 → 402 tokens (压缩率 80.0%, 策略: hybrid, 质量: 0.76)
+2026-05-06 17:08:16,553 - agent - INFO - 上下文压缩完成: 1494 → 595 tokens (压缩率 60.2%, 策略: extractive, 质量: 1.00)
+2026-05-06 17:08:16,553 - agent - WARNING - LLM 客户端未配置，回退到提取式压缩
+2026-05-06 17:08:16,553 - agent - INFO - 上下文压缩完成: 1494 → 595 tokens (压缩率 60.2%, 策略: hybrid, 质量: 1.00)

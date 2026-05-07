@@ -13,6 +13,9 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough, RunnableLambda
 from langchain_core.prompts import PromptTemplate
 
+# 上下文压缩模块
+from rag.context_compressor import ContextCompressor, CompressionStrategy, format_compressed_docs
+
 def _format_docs(docs: list[Document]) -> str:
     parts = []
     for i, doc in enumerate(docs, start=1):
@@ -26,15 +29,22 @@ def print_prompt(prompt):
     print("=" * 60)
     return prompt
 class RAGSummarize:
-    """支持 Rerank 的 RAG 问答链。
+    """支持 Rerank 和上下文压缩的 RAG 问答链。
 
     配置说明（可在 config/rag.yml 添加）：
+        # Rerank 配置
         rerank_enabled: true          # 是否启用 Rerank
         rerank_model: qwen3-rerank    # 可选: qwen3-rerank(推荐), gte-rerank-v2
         rerank_top_n: 5               # 精排后取 Top-N
         rerank_search_k: 20           # 向量检索召回数量（需 > rerank_top_n）
         rerank_enhanced: true         # 是否使用增强版 Rerank
         rerank_score_threshold: 0.4   # 分数阈值
+
+        # 上下文压缩配置（新增）
+        compression_enabled: true     # 是否启用上下文压缩
+        compression_max_tokens: 3500  # 压缩后目标 Token 上限
+        compression_min_tokens: 200   # 单个文档最小保留 Token
+        compression_extract_ratio: 0.6 # 提取式压缩保留比例
     """
 
     def __init__(
@@ -45,6 +55,7 @@ class RAGSummarize:
         rerank_model: str = None,
         use_enhanced: bool = None,
         score_threshold: float = None,
+        compression_enabled: bool = None,
     ):
         # 从配置读取默认值（参数可覆盖）
         cfg = rerank_config
@@ -94,17 +105,78 @@ class RAGSummarize:
             )
 
         self.prompt_template = PromptTemplate.from_template(self.rag_prompt)
+
+        # 初始化上下文压缩器
+        self.compression_enabled = compression_enabled if compression_enabled is not None \
+                                   else cfg.get("compression_enabled", True)
+
+        if self.compression_enabled:
+            self.compressor = ContextCompressor(
+                llm_client=chat_model if cfg.get("compression_use_llm", False) else None,
+                embedding_client=None,
+                config={
+                    "compression_max_tokens": cfg.get("compression_max_tokens", 3500),
+                    "compression_min_tokens": cfg.get("compression_min_tokens", 200),
+                    "compression_extract_ratio": cfg.get("compression_extract_ratio", 0.6),
+                    "compression_quality_threshold": cfg.get("compression_quality_threshold", 0.7),
+                }
+            )
+            logger.info("上下文压缩已启用（目标 Token: %d, 策略: %s）",
+                       cfg.get("compression_max_tokens", 3500),
+                       cfg.get("compression_strategy", "auto"))
+        else:
+            self.compressor = None
+
         self.chain = self._create_chain()
 
     def _rerank_docs(self, query: str) -> list[Document]:
-        """先向量检索，再 Rerank 精排。"""
+        """增强版检索流程：向量检索 → Rerank 精排 → 上下文压缩（可选）"""
         # 1. 向量检索（粗排）
         coarse_docs = self.rag_retriever.invoke(query)
         coarse_docs = self.vector_store.expand_retrieval_to_parents(coarse_docs)
         if not coarse_docs:
             return []
+
         # 2. Rerank 精排
-        return self.reranker.rerank(query, coarse_docs)
+        reranked_docs = self.reranker.rerank(query, coarse_docs)
+
+        # 3. 上下文压缩（新增）
+        if self.compression_enabled and self.compressor:
+            strategy_str = rerank_config.get("compression_strategy", "auto")
+            try:
+                strategy = CompressionStrategy(strategy_str)
+            except ValueError:
+                strategy = CompressionStrategy.AUTO
+
+            result = self.compressor.compress(
+                query=query,
+                documents=reranked_docs,
+                max_tokens=self.compressor.max_tokens,
+                strategy=strategy
+            )
+
+            # 记录压缩统计
+            if result.stats.compression_ratio > 0:
+                logger.info(
+                    "上下文压缩: %d→%d tokens (%.1f%%压缩率, 策略:%s, 质量:%.2f, 耗时:%.1fms)",
+                    result.stats.original_tokens,
+                    result.stats.compressed_tokens,
+                    result.stats.compression_ratio * 100,
+                    result.stats.method_used,
+                    result.quality_score,
+                    result.stats.processing_time_ms
+                )
+
+                # 质量警告
+                if result.quality_score < self.compressor.quality_threshold:
+                    logger.warning(
+                        "压缩质量较低(%.2f)，可能影响回答效果",
+                        result.quality_score
+                    )
+
+            return result.documents
+
+        return reranked_docs
 
     def _create_chain(self):
         return (
@@ -132,15 +204,16 @@ class RAGSummarize:
 
 
 class HybridRAG:
-    """多路召回 RAG：Web 搜索 + 本地知识库 + 统一 Rerank
+    """多路召回 RAG：Web 搜索 + 本地知识库 + 统一 Rerank + 上下文压缩
 
-    同时从多个数据源召回文档，经 Rerank 精排后返回最相关的内容。
+    同时从多个数据源召回文档，经 Rerank 精排和上下文压缩后返回最相关的内容。
 
     配置说明（可在 config/rag.yml 添加）：
         hybrid_enabled: true          # 是否启用多路召回
         hybrid_web_max_results: 5     # Web 搜索返回结果数
         hybrid_local_k: 15            # 本地检索召回数
         hybrid_rerank_top_n: 5        # 精排后取 Top-N
+        compression_enabled: true    # 是否启用上下文压缩
     """
 
     def __init__(
@@ -150,6 +223,7 @@ class HybridRAG:
         rerank_top_n: int = None,
         rerank_model: str = None,
         score_threshold: float = None,
+        compression_enabled: bool = None,
     ):
         # 从配置读取默认值
         cfg = rerank_config
@@ -184,11 +258,33 @@ class HybridRAG:
             dedup_threshold=cfg.get("dedup_threshold", 0.80),
         )
 
-        logger.info(
-            "初始化 HybridRAG（Web: %d条, 本地: %d条, Rerank: Top-%d, 阈值: %.2f）",
-            self.web_max_results, self.local_k, self.rerank_top_n,
-            score_threshold or cfg.get("score_threshold", 0.25)
-        )
+        # 初始化上下文压缩器
+        self.compression_enabled = compression_enabled if compression_enabled is not None \
+                                   else cfg.get("compression_enabled", True)
+
+        if self.compression_enabled:
+            self.compressor = ContextCompressor(
+                llm_client=chat_model if cfg.get("compression_use_llm", False) else None,
+                embedding_client=None,
+                config={
+                    "compression_max_tokens": cfg.get("compression_max_tokens", 3500),
+                    "compression_min_tokens": cfg.get("compression_min_tokens", 200),
+                    "compression_extract_ratio": cfg.get("compression_extract_ratio", 0.6),
+                    "compression_quality_threshold": cfg.get("compression_quality_threshold", 0.7),
+                }
+            )
+            logger.info(
+                "初始化 HybridRAG（Web: %d条, 本地: %d条, Rerank: Top-%d, 阈值: %.2f, 压缩: 启用）",
+                self.web_max_results, self.local_k, self.rerank_top_n,
+                score_threshold or cfg.get("score_threshold", 0.25)
+            )
+        else:
+            self.compressor = None
+            logger.info(
+                "初始化 HybridRAG（Web: %d条, 本地: %d条, Rerank: Top-%d, 阈值: %.2f, 压缩: 禁用）",
+                self.web_max_results, self.local_k, self.rerank_top_n,
+                score_threshold or cfg.get("score_threshold", 0.25)
+            )
 
         self.prompt_template = PromptTemplate.from_template(self.rag_prompt)
         self.chain = self._create_chain()
@@ -282,7 +378,7 @@ class HybridRAG:
         return all_docs
 
     def _rerank_docs(self, query: str) -> List[Document]:
-        """多路召回后统一 Rerank"""
+        """多路召回 → 统一 Rerank → 上下文压缩"""
         # 1. 多路召回
         docs = self._multi_retrieve(query)
         if not docs:
@@ -296,6 +392,33 @@ class HybridRAG:
         web_count = sum(1 for d in reranked if d.metadata.get("source_channel") == "web")
         logger.info("Rerank 结果: %d 条 (本地 %d + Web %d)",
                    len(reranked), local_count, web_count)
+
+        # 3. 上下文压缩
+        if self.compression_enabled and self.compressor:
+            strategy_str = rerank_config.get("compression_strategy", "auto")
+            try:
+                strategy = CompressionStrategy(strategy_str)
+            except ValueError:
+                strategy = CompressionStrategy.AUTO
+
+            result = self.compressor.compress(
+                query=query,
+                documents=reranked,
+                max_tokens=self.compressor.max_tokens,
+                strategy=strategy
+            )
+
+            # 记录压缩统计
+            if result.stats.compression_ratio > 0:
+                logger.info(
+                    "HybridRAG 上下文压缩: %d→%d tokens (%.1f%%压缩率, 质量:%.2f)",
+                    result.stats.original_tokens,
+                    result.stats.compressed_tokens,
+                    result.stats.compression_ratio * 100,
+                    result.quality_score
+                )
+
+            return result.documents
 
         return reranked
 
