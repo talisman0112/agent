@@ -18,6 +18,7 @@ md5_path: md5.txt
 # 参与向量化的文件后缀（小写）
 allow_knowledge_file_types:
   - ".txt"
+  - ".md"
   - ".pdf"
   - ".docx"
   - ".doc"

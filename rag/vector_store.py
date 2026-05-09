@@ -39,6 +39,23 @@ from rag.structured_chunking import (
 _DEFAULT_TEXT_SPLIT_SEPARATORS = ["\n\n", "\n", "。", "！", "？", "；", "，", " ", ""]
 
 
+# 在 data/ 下属于"项目元数据"而非"知识语料"的常见文件名，入库时统一跳过。
+# 大小写不敏感；路径末段精确匹配（如 ``data/README.md``、``data/glossary/README.md``）。
+_NON_CORPUS_BASENAMES = {
+    "readme.md",
+    "readme.txt",
+    "changelog.md",
+    "license.md",
+    "license.txt",
+    "todo.md",
+    ".gitkeep",
+}
+
+
+def _is_non_corpus_file(file_path: str) -> bool:
+    return os.path.basename(file_path).lower() in _NON_CORPUS_BASENAMES
+
+
 def _resolve_text_splitter_separators(cfg: dict) -> list[str]:
     """从 chrome 配置解析 RecursiveCharacterTextSplitter 的 separators 列表。"""
     raw_list = cfg.get("separators")
@@ -66,7 +83,9 @@ _EMBED_DISABLED_MSG = (
 
 
 def _documents_from_file(file_path: str) -> list[Document]:
-    if file_path.endswith(".txt"):
+    # .md 与 .txt 走同一文本加载器；结构化分块（``rag/structured_chunking.py``）
+    # 已能识别 Markdown ``#``～``######`` 标题和中文章节标题，无需特殊 markdown loader。
+    if file_path.endswith((".txt", ".md")):
         return txt_loader(file_path).load()
     if file_path.endswith(".pdf"):
         return pdf_loader(file_path).load()
@@ -157,6 +176,9 @@ class VectorStoreService:
 
         paths = listdir_with_allowed_type(data_dir, allowed)
         for file_path in paths:
+            if _is_non_corpus_file(file_path):
+                logger.info("Skip non-corpus file: %s", file_path)
+                continue
             digest = get_file_md5(file_path)
             if digest_seen(digest):
                 logger.info("Skip unchanged file (already in md5 ledger): %s", file_path)

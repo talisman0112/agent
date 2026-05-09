@@ -829,3 +829,100 @@ requests.exceptions.SSLError: HTTPSConnectionPool(host='dashscope.aliyuncs.com',
 2026-05-07 20:41:20,368 - agent - INFO - Text splitter: chunk_size=512 chunk_overlap=80 separators=9级
 2026-05-07 20:41:20,372 - agent - INFO - Parent-child：父块 SQLite C:\Users\lenovo\Desktop\rag\agent\db/parent_store.sqlite
 2026-05-07 20:41:20,372 - agent - INFO - 初始化 HybridRAG（Web: 5条, 本地: 15条, Rerank: Top-5, 阈值: 0.25, 压缩: 启用）
+2026-05-08 15:19:45,271 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-08 15:19:45,616 - agent - INFO - Text splitter: chunk_size=512 chunk_overlap=80 separators=9级
+2026-05-08 15:19:45,626 - agent - INFO - Parent-child：父块 SQLite C:\Users\lenovo\Desktop\rag\agent\db/parent_store.sqlite
+2026-05-08 15:19:45,626 - agent - INFO - 使用增强版 Reranker（阈值: 0.25, 去重: 0.80, 模式: qa, 自动: True）
+2026-05-08 15:19:45,626 - agent - INFO - 上下文压缩已启用（目标 Token: 3500, 策略: auto）
+2026-05-08 15:19:45,627 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-08 15:19:45,633 - agent - INFO - Text splitter: chunk_size=512 chunk_overlap=80 separators=9级
+2026-05-08 15:19:45,637 - agent - INFO - Parent-child：父块 SQLite C:\Users\lenovo\Desktop\rag\agent\db/parent_store.sqlite
+2026-05-08 15:19:45,637 - agent - INFO - 初始化 HybridRAG（Web: 5条, 本地: 15条, Rerank: Top-5, 阈值: 0.25, 压缩: 启用）
+2026-05-08 15:20:23,632 - agent - INFO - Model call request: {'messages': [HumanMessage(content='今天，有什么新的新闻', additional_kwargs={}, response_metadata={}, id='ffa595d8-6324-43a9-865c-48895574720d')]}
+2026-05-08 15:20:23,632 - agent - INFO - [log_before_model] 即将调用模型，带有 1 条消息
+2026-05-08 15:20:41,288 - agent - INFO - 模型请求工具: web_search args={'query': '今日新闻', 'max_results': 5}
+2026-05-08 15:20:41,288 - agent - INFO - Model call response: {'messages': [HumanMessage(content='今天，有什么新的新闻', additional_kwargs={}, response_metadata={}, id='ffa595d8-6324-43a9-865c-48895574720d'), AIMessage(content='', additional_kwargs={'tool_calls': [{'function': {'arguments': '{"query": "今日新闻", "max_results": 5}', 'name': 'web_search'}, 'id': 'call_d776e2bb00d9471d880ea29a', 'index': 0, 'type': 'function'}]}, response_metadata={'model_name': 'qwen3-max', 'finish_reason': 'tool_calls', 'request_id': 'f3dd50b3-4e02-986f-bab7-2034e1879609', 'token_usage': {'input_tokens': 2031, 'output_tokens': 32, 'prompt_tokens_details': {'cached_tokens': 0}, 'total_tokens': 2063}}, id='lc_run--019e0675-7d64-7140-b13d-ef59f6223e5e-0', tool_calls=[{'name': 'web_search', 'args': {'query': '今日新闻', 'max_results': 5}, 'id': 'call_d776e2bb00d9471d880ea29a', 'type': 'tool_call'}], invalid_tool_calls=[])]}
+2026-05-08 15:20:56,333 - agent - INFO - Agent 调用工具: name=web_search tool_call_id=call_d776e2bb00d9471d880ea29a content_preview=搜索请求超时，请检查网络连接或稍后再试。
+2026-05-08 15:20:56,334 - agent - INFO - Model call request: {'messages': [HumanMessage(content='今天，有什么新的新闻', additional_kwargs={}, response_metadata={}, id='ffa595d8-6324-43a9-865c-48895574720d'), AIMessage(content='', additional_kwargs={'tool_calls': [{'function': {'arguments': '{"query": "今日新闻", "max_results": 5}', 'name': 'web_search'}, 'id': 'call_d776e2bb00d9471d880ea29a', 'index': 0, 'type': 'function'}]}, response_metadata={'model_name': 'qwen3-max', 'finish_reason': 'tool_calls', 'request_id': 'f3dd50b3-4e02-986f-bab7-2034e1879609', 'token_usage': {'input_tokens': 2031, 'output_tokens': 32, 'prompt_tokens_details': {'cached_tokens': 0}, 'total_tokens': 2063}}, id='lc_run--019e0675-7d64-7140-b13d-ef59f6223e5e-0', tool_calls=[{'name': 'web_search', 'args': {'query': '今日新闻', 'max_results': 5}, 'id': 'call_d776e2bb00d9471d880ea29a', 'type': 'tool_call'}], invalid_tool_calls=[]), ToolMessage(content='搜索请求超时，请检查网络连接或稍后再试。', name='web_search', id='daa06c27-a651-428f-814d-4b4b6422595c', tool_call_id='call_d776e2bb00d9471d880ea29a')]}
+2026-05-08 15:20:56,334 - agent - INFO - [log_before_model] 即将调用模型，带有 3 条消息
+2026-05-08 15:20:59,216 - agent - INFO - Model call response: {'messages': [HumanMessage(content='今天，有什么新的新闻', additional_kwargs={}, response_metadata={}, id='ffa595d8-6324-43a9-865c-48895574720d'), AIMessage(content='', additional_kwargs={'tool_calls': [{'function': {'arguments': '{"query": "今日新闻", "max_results": 5}', 'name': 'web_search'}, 'id': 'call_d776e2bb00d9471d880ea29a', 'index': 0, 'type': 'function'}]}, response_metadata={'model_name': 'qwen3-max', 'finish_reason': 'tool_calls', 'request_id': 'f3dd50b3-4e02-986f-bab7-2034e1879609', 'token_usage': {'input_tokens': 2031, 'output_tokens': 32, 'prompt_tokens_details': {'cached_tokens': 0}, 'total_tokens': 2063}}, id='lc_run--019e0675-7d64-7140-b13d-ef59f6223e5e-0', tool_calls=[{'name': 'web_search', 'args': {'query': '今日新闻', 'max_results': 5}, 'id': 'call_d776e2bb00d9471d880ea29a', 'type': 'tool_call'}], invalid_tool_calls=[]), ToolMessage(content='搜索请求超时，请检查网络连接或稍后再试。', name='web_search', id='daa06c27-a651-428f-814d-4b4b6422595c', tool_call_id='call_d776e2bb00d9471d880ea29a'), AIMessage(content='抱歉，刚才的新闻搜索请求超时了，可能是网络暂时不稳定。你可以稍后再问我一次，或者尝试指定某个你感兴趣的领域（比如科技、国际、体育等），我可以再帮你查询相关内容。', additional_kwargs={}, response_metadata={'model_name': 'qwen3-max', 'finish_reason': 'stop', 'request_id': '785bd786-e24c-9e90-90fd-d19cecb40d76', 'token_usage': {'input_tokens': 2090, 'output_tokens': 44, 'prompt_tokens_details': {'cached_tokens': 1920}, 'total_tokens': 2134}}, id='lc_run--019e0675-fd1c-7143-9acb-078f5d3b2b68-0', tool_calls=[], invalid_tool_calls=[])]}
+2026-05-08 15:20:59,219 - agent - INFO - 本轮工具调用结束，共 1 次: ['web_search']
+2026-05-09 15:19:51,387 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-09 15:19:51,584 - agent - INFO - Text splitter: chunk_size=512 chunk_overlap=80 separators=9级
+2026-05-09 15:19:51,586 - agent - INFO - Parent-child：父块 SQLite C:\Users\lenovo\Desktop\rag\agent\db/parent_store.sqlite
+2026-05-09 15:19:51,586 - agent - INFO - 使用增强版 Reranker（阈值: 0.25, 去重: 0.80, 模式: qa, 自动: True）
+2026-05-09 15:19:51,587 - agent - INFO - 上下文压缩已启用（目标 Token: 3500, 策略: auto）
+2026-05-09 15:19:51,587 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-09 15:19:51,590 - agent - INFO - Text splitter: chunk_size=512 chunk_overlap=80 separators=9级
+2026-05-09 15:19:51,591 - agent - INFO - Parent-child：父块 SQLite C:\Users\lenovo\Desktop\rag\agent\db/parent_store.sqlite
+2026-05-09 15:19:51,591 - agent - INFO - 初始化 HybridRAG（Web: 5条, 本地: 15条, Rerank: Top-5, 阈值: 0.25, 压缩: 启用）
+2026-05-09 15:20:11,078 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-09 15:20:11,143 - agent - INFO - Text splitter: chunk_size=512 chunk_overlap=80 separators=9级
+2026-05-09 15:20:11,146 - agent - INFO - Parent-child：父块 SQLite C:\Users\lenovo\Desktop\rag\agent\db/parent_store.sqlite
+2026-05-09 15:20:11,146 - agent - INFO - 使用增强版 Reranker（阈值: 0.25, 去重: 0.80, 模式: qa, 自动: True）
+2026-05-09 15:20:11,146 - agent - INFO - 上下文压缩已启用（目标 Token: 3500, 策略: auto）
+2026-05-09 15:20:11,147 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-09 15:20:11,153 - agent - INFO - Text splitter: chunk_size=512 chunk_overlap=80 separators=9级
+2026-05-09 15:20:11,157 - agent - INFO - Parent-child：父块 SQLite C:\Users\lenovo\Desktop\rag\agent\db/parent_store.sqlite
+2026-05-09 15:20:11,158 - agent - INFO - 初始化 HybridRAG（Web: 5条, 本地: 15条, Rerank: Top-5, 阈值: 0.25, 压缩: 启用）
+2026-05-09 15:40:38,226 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-09 15:40:38,311 - agent - INFO - Text splitter: chunk_size=512 chunk_overlap=80 separators=9级
+2026-05-09 15:40:38,316 - agent - INFO - Parent-child：父块 SQLite C:\Users\lenovo\Desktop\rag\agent\db/parent_store.sqlite
+2026-05-09 15:40:38,318 - agent - INFO - Skip non-corpus file: C:\Users\lenovo\Desktop\rag\agent\data\README.md
+2026-05-09 15:41:07,755 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\_demo\sample_company_starcore_energy.md (15 child chunks, 15 parents)
+2026-05-09 15:41:12,911 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\_demo\sample_research_report_ai_computing.md (16 child chunks, 16 parents)
+2026-05-09 15:41:25,697 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\glossary\financial_statements.md (33 child chunks, 33 parents)
+2026-05-09 15:41:38,473 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\glossary\financial_terms.md (45 child chunks, 45 parents)
+2026-05-09 15:41:46,099 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\glossary\valuation_methods.md (17 child chunks, 15 parents)
+2026-05-09 15:42:08,822 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\industry_kb\industry_ai_computing.md (29 child chunks, 28 parents)
+2026-05-09 15:42:19,876 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\industry_kb\industry_new_energy_vehicle.md (24 child chunks, 24 parents)
+2026-05-09 15:42:39,645 - agent - INFO - Indexed C:\Users\lenovo\Desktop\rag\agent\data\industry_kb\industry_semiconductor.md (25 child chunks, 25 parents)
+2026-05-09 15:42:39,645 - agent - INFO - Ingest scan finished (9 paths under C:\Users\lenovo\Desktop\rag\agent\data)
+2026-05-09 15:43:27,872 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-09 15:43:27,923 - agent - INFO - Text splitter: chunk_size=512 chunk_overlap=80 separators=9级
+2026-05-09 15:43:27,925 - agent - INFO - Parent-child：父块 SQLite C:\Users\lenovo\Desktop\rag\agent\db/parent_store.sqlite
+2026-05-09 15:43:27,926 - agent - INFO - 使用增强版 Reranker（阈值: 0.25, 去重: 0.80, 模式: qa, 自动: True）
+2026-05-09 15:43:27,926 - agent - INFO - 上下文压缩已启用（目标 Token: 3500, 策略: auto）
+2026-05-09 15:43:30,798 - agent - INFO - 去重处理: 7 docs → 3 docs (过滤了 4 个重复)
+2026-05-09 15:43:30,798 - agent - INFO - Rerank 完成: 19 docs → 3 docs (阈值: 0.25)
+2026-05-09 15:43:36,646 - agent - INFO - 去重处理: 5 docs → 2 docs (过滤了 3 个重复)
+2026-05-09 15:43:36,646 - agent - INFO - Rerank 完成: 18 docs → 2 docs (阈值: 0.25)
+2026-05-09 15:43:41,326 - agent - INFO - 去重处理: 3 docs → 1 docs (过滤了 2 个重复)
+2026-05-09 15:43:41,326 - agent - INFO - Rerank 完成: 19 docs → 1 docs (阈值: 0.25)
+2026-05-09 15:43:49,108 - agent - INFO - 去重处理: 7 docs → 2 docs (过滤了 5 个重复)
+2026-05-09 15:43:49,108 - agent - INFO - Rerank 完成: 20 docs → 2 docs (阈值: 0.25)
+2026-05-09 15:43:57,630 - agent - INFO - 去重处理: 5 docs → 3 docs (过滤了 2 个重复)
+2026-05-09 15:43:57,630 - agent - INFO - Rerank 完成: 20 docs → 3 docs (阈值: 0.25)
+2026-05-09 15:44:05,267 - agent - INFO - 去重处理: 3 docs → 1 docs (过滤了 2 个重复)
+2026-05-09 15:44:05,267 - agent - INFO - Rerank 完成: 20 docs → 1 docs (阈值: 0.25)
+2026-05-09 15:44:10,129 - agent - INFO - 去重处理: 7 docs → 2 docs (过滤了 5 个重复)
+2026-05-09 15:44:10,130 - agent - INFO - Rerank 完成: 20 docs → 2 docs (阈值: 0.25)
+2026-05-09 15:50:12,714 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-09 15:50:12,769 - agent - INFO - Text splitter: chunk_size=512 chunk_overlap=80 separators=9级
+2026-05-09 15:50:12,771 - agent - INFO - Parent-child：父块 SQLite C:\Users\lenovo\Desktop\rag\agent\db/parent_store.sqlite
+2026-05-09 15:50:12,771 - agent - INFO - 使用增强版 Reranker（阈值: 0.25, 去重: 0.80, 模式: qa, 自动: True）
+2026-05-09 15:50:12,772 - agent - INFO - 上下文压缩已启用（目标 Token: 3500, 策略: auto）
+2026-05-09 15:50:12,772 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-09 15:50:12,775 - agent - INFO - Text splitter: chunk_size=512 chunk_overlap=80 separators=9级
+2026-05-09 15:50:12,777 - agent - INFO - Parent-child：父块 SQLite C:\Users\lenovo\Desktop\rag\agent\db/parent_store.sqlite
+2026-05-09 15:50:12,777 - agent - INFO - 初始化 HybridRAG（Web: 5条, 本地: 15条, Rerank: Top-5, 阈值: 0.25, 压缩: 启用）
+2026-05-09 15:50:21,416 - agent - INFO - Model call request: {'messages': [HumanMessage(content='什么是 ROE？请用杜邦分析拆解一下', additional_kwargs={}, response_metadata={}, id='8bd0146d-cba9-402b-9698-dd1055fdb941')]}
+2026-05-09 15:50:21,417 - agent - INFO - [log_before_model] 即将调用模型，带有 1 条消息
+2026-05-09 15:50:24,360 - agent - INFO - 模型请求工具: rag_summarize args={'query': 'ROE 杜邦分析 定义 公式 拆解'}
+2026-05-09 15:50:24,360 - agent - INFO - Model call response: {'messages': [HumanMessage(content='什么是 ROE？请用杜邦分析拆解一下', additional_kwargs={}, response_metadata={}, id='8bd0146d-cba9-402b-9698-dd1055fdb941'), AIMessage(content='', additional_kwargs={'tool_calls': [{'function': {'arguments': '{"query": "ROE 杜邦分析 定义 公式 拆解"}', 'name': 'rag_summarize'}, 'id': 'call_22ae99a2b3a64e2189f50afb', 'index': 0, 'type': 'function'}]}, response_metadata={'model_name': 'qwen3-max', 'finish_reason': 'tool_calls', 'request_id': 'a8d5536a-e1d6-9315-b47c-b3ec17babaa9', 'token_usage': {'input_tokens': 2665, 'output_tokens': 38, 'prompt_tokens_details': {'cached_tokens': 0}, 'total_tokens': 2703}}, id='lc_run--019e0bb7-47f1-7432-ab82-4781d36e6570-0', tool_calls=[{'name': 'rag_summarize', 'args': {'query': 'ROE 杜邦分析 定义 公式 拆解'}, 'id': 'call_22ae99a2b3a64e2189f50afb', 'type': 'tool_call'}], invalid_tool_calls=[])]}
+2026-05-09 15:50:27,195 - agent - INFO - 去重处理: 7 docs → 2 docs (过滤了 5 个重复)
+2026-05-09 15:50:27,195 - agent - INFO - Rerank 完成: 19 docs → 2 docs (阈值: 0.25)
+2026-05-09 15:50:37,836 - agent - INFO - Agent 调用工具: name=rag_summarize tool_call_id=call_22ae99a2b3a64e2189f50afb content_preview=ROE（净资产收益率，Return on Equity）的杜邦分析是一种将 ROE 拆解为三个核心驱动因素的财务分析方法，用于深入理解企业盈利来源。其定义与公式如下：
+
+**核心公式**：  
+ROE = 归母净利润 / 平均归母净资产  
+
+**杜邦拆解公式**：  
+ROE = 销售净利率 × 资产周转率 × 权益乘数  
+
+其中：
+- **销售净利率**（Net Profit Margin）
+2026-05-09 15:50:37,836 - agent - INFO - Model call request: {'messages': [HumanMessage(content='什么是 ROE？请用杜邦分析拆解一下', additional_kwargs={}, response_metadata={}, id='8bd0146d-cba9-402b-9698-dd1055fdb941'), AIMessage(content='', additional_kwargs={'tool_calls': [{'function': {'arguments': '{"query": "ROE 杜邦分析 定义 公式 拆解"}', 'name': 'rag_summarize'}, 'id': 'call_22ae99a2b3a64e2189f50afb', 'index': 0, 'type': 'function'}]}, response_metadata={'model_name': 'qwen3-max', 'finish_reason': 'tool_calls', 'request_id': 'a8d5536a-e1d6-9315-b47c-b3ec17babaa9', 'token_usage': {'input_tokens': 2665, 'output_tokens': 38, 'prompt_tokens_details': {'cached_tokens': 0}, 'total_tokens': 2703}}, id='lc_run--019e0bb7-47f1-7432-ab82-4781d36e6570-0', tool_calls=[{'name': 'rag_summarize', 'args': {'query': 'ROE 杜邦分析 定义 公式 拆解'}, 'id': 'call_22ae99a2b3a64e2189f50afb', 'type': 'tool_call'}], invalid_tool_calls=[]), ToolMessage(content='ROE（净资产收益率，Return on Equity）的杜邦分析是一种将 ROE 拆解为三个核心驱动因素的财务分析方法，用于深入理解企业盈利来源。其定义与公式如下：\n\n**核心公式**：  \nROE = 归母净利润 / 平均归母净资产  \n\n**杜邦拆解公式**：  \nROE = 销售净利率 × 资产周转率 × 权益乘数  \n\n其中：\n- **销售净利率**（Net Profit Margin）= 归母净利润 / 营业收入，反映企业的**赚钱能力**；\n- **资产周转率**（Asset Turnover）= 营业收入 / 平均总资产，衡量企业的**运营效率**；\n- **权益乘数**（Equity Multiplier）= 平均总资产 / 平均归母净资产，体现企业的**财务杠杆水平**。\n\n该拆解方法源自经典财务分析框架，被广泛用于评估企业盈利质量与可持续性。长期 ROE 稳定高于 15% 通常被视为优质企业的标志「参考资料1」。\n\n注：参考资料2中提及某公司 ROE 为 14.4%（按期末净资产计算），但未提供完整的杜邦三因子数据，故无法进一步展开具体案例拆解。', name='rag_summarize', id='cdf9b9df-0180-4a65-93bb-f0e50d394958', tool_call_id='call_22ae99a2b3a64e2189f50afb')]}
+2026-05-09 15:50:37,836 - agent - INFO - [log_before_model] 即将调用模型，带有 3 条消息
+2026-05-09 15:50:52,544 - agent - INFO - Model call response: {'messages': [HumanMessage(content='什么是 ROE？请用杜邦分析拆解一下', additional_kwargs={}, response_metadata={}, id='8bd0146d-cba9-402b-9698-dd1055fdb941'), AIMessage(content='', additional_kwargs={'tool_calls': [{'function': {'arguments': '{"query": "ROE 杜邦分析 定义 公式 拆解"}', 'name': 'rag_summarize'}, 'id': 'call_22ae99a2b3a64e2189f50afb', 'index': 0, 'type': 'function'}]}, response_metadata={'model_name': 'qwen3-max', 'finish_reason': 'tool_calls', 'request_id': 'a8d5536a-e1d6-9315-b47c-b3ec17babaa9', 'token_usage': {'input_tokens': 2665, 'output_tokens': 38, 'prompt_tokens_details': {'cached_tokens': 0}, 'total_tokens': 2703}}, id='lc_run--019e0bb7-47f1-7432-ab82-4781d36e6570-0', tool_calls=[{'name': 'rag_summarize', 'args': {'query': 'ROE 杜邦分析 定义 公式 拆解'}, 'id': 'call_22ae99a2b3a64e2189f50afb', 'type': 'tool_call'}], invalid_tool_calls=[]), ToolMessage(content='ROE（净资产收益率，Return on Equity）的杜邦分析是一种将 ROE 拆解为三个核心驱动因素的财务分析方法，用于深入理解企业盈利来源。其定义与公式如下：\n\n**核心公式**：  \nROE = 归母净利润 / 平均归母净资产  \n\n**杜邦拆解公式**：  \nROE = 销售净利率 × 资产周转率 × 权益乘数  \n\n其中：\n- **销售净利率**（Net Profit Margin）= 归母净利润 / 营业收入，反映企业的**赚钱能力**；\n- **资产周转率**（Asset Turnover）= 营业收入 / 平均总资产，衡量企业的**运营效率**；\n- **权益乘数**（Equity Multiplier）= 平均总资产 / 平均归母净资产，体现企业的**财务杠杆水平**。\n\n该拆解方法源自经典财务分析框架，被广泛用于评估企业盈利质量与可持续性。长期 ROE 稳定高于 15% 通常被视为优质企业的标志「参考资料1」。\n\n注：参考资料2中提及某公司 ROE 为 14.4%（按期末净资产计算），但未提供完整的杜邦三因子数据，故无法进一步展开具体案例拆解。', name='rag_summarize', id='cdf9b9df-0180-4a65-93bb-f0e50d394958', tool_call_id='call_22ae99a2b3a64e2189f50afb'), AIMessage(content='**ROE（净资产收益率）** 是衡量企业为股东创造回报效率的核心指标，其杜邦分析通过三因子拆解揭示盈利的驱动来源：\n\n---\n\n### **1. 基础定义**\n- **公式**：  \n  $$ \\text{ROE} = \\frac{\\text{归母净利润}}{\\text{平均归母净资产}} $$\n\n---\n\n### **2. 杜邦三因子拆解**\n将 ROE 分解为三个可操作的经营与财务维度：\n- **销售净利率**（盈利能力）  \n  $$ \\frac{\\text{归母净利润}}{\\text{营业收入}} $$  \n  → 反映每元收入转化为利润的能力。\n\n- **资产周转率**（运营效率）  \n  $$ \\frac{\\text{营业收入}}{\\text{平均总资产}} $$  \n  → 衡量资产利用效率，值越高说明“以更少资产赚更多收入”。\n\n- **权益乘数**（财务杠杆）  \n  $$ \\frac{\\text{平均总资产}}{\\text{平均归母净资产}} $$  \n  → 体现负债融资程度，乘数越高杠杆越大（但风险也越高）。\n\n**综合公式**：  \n$$ \\text{ROE} = \\text{销售净利率} \\times \\text{资产周转率} \\times \\text{权益乘数} $$\n\n---\n\n### **3. 应用意义**\n- **诊断问题**：若 ROE 下降，可定位是利润率压缩、资产效率降低，还是去杠杆导致。  \n- **对标分析**：不同行业主导因子不同（如消费行业靠高净利率，零售业靠高周转率）。  \n- **可持续性判断**：依赖高杠杆推高的 ROE 风险较大，而由净利率或周转率驱动的 ROE 更健康。\n\n> 本回答仅基于公开信息整理，不构成投资建议。市场有风险，决策需谨慎。', additional_kwargs={}, response_metadata={'model_name': 'qwen3-max', 'finish_reason': 'stop', 'request_id': '1708f49c-ddf5-9f07-9142-863830bd6942', 'token_usage': {'input_tokens': 2996, 'output_tokens': 411, 'prompt_tokens_details': {'cached_tokens': 2560}, 'total_tokens': 3407}}, id='lc_run--019e0bb7-8814-7fb1-87d3-907a7b002591-0', tool_calls=[], invalid_tool_calls=[])]}
+2026-05-09 15:50:52,545 - agent - INFO - 本轮工具调用结束，共 1 次: ['rag_summarize']

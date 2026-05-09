@@ -1,12 +1,15 @@
 """
-Agent 可调用的基础工具集。
+FinSight 投研助理 Agent 的工具集。
 
-使用场景（选型说明）：
-- RAG 类：企业内部知识、长文档问答，需先入库向量库。
-- 时间与计算：回答「现在几点」「帮我算一下」等确定性问题，避免模型算错。
-- 天气 / 城市解析：需要外网；Open-Meteo 免 Key，适合演示与小流量；生产可换商业天气 API。
+工具分组：
+- RAG 类：研报 / 年报 / 公告 / 政策原文等本地语料的检索与总结。
+- Hybrid RAG：本地语料 + Web 召回 + 统一 Rerank，覆盖最新动态。
+- 行情/时间/计算：投研常用辅助类工具（财务指标、市场时间、Web 搜索）。
 
-将 `TOOLS` 绑定到 LangChain / LangGraph Agent 的 `tools` 参数即可。
+历史保留：`get_weather_by_location` / `geocode_place` 在投研场景已不参与
+工具路由（未列入 ``TOOLS``），代码保留以便后续业务扩展或单元测试复用。
+
+将 ``TOOLS`` 绑定到 LangChain / LangGraph Agent 的 ``tools`` 参数即可。
 """
 
 from __future__ import annotations
@@ -37,16 +40,17 @@ _hybrid_rag = HybridRAG()  # 多路召回 RAG 实例
 
 @tool(
     description=(
-        "基于本地向量知识库回答用户问题：先做检索，再把命中的资料拼进提示词由大模型总结。"
-        "适用于：公司内部文档、手册、政策；用户身份/称呼等写入库的个人信息；"
-        "以及计算机与 IT 入门材料（体系结构、OS、网络、数据库、算法、RAG/机器学习等）——"
-        "只要问题可能落在已上传文档里，就应使用本工具，而不是凭模型记忆直接长答。"
-        "当用户说「讲一些计算机知识」「入门」「科普」等宽泛问题时，仍应用用户原话或简要关键词调用本工具。"
-        "检索参数 query 要尽量覆盖「用户原话里的实体 + 对话里已出现的同义称呼」（实名/昵称/外号/英文别名），"
-        "并可追加「别名」「外号」等词；库内正文常只写其中一种称呼，仅用另一种称呼检索极易漏检。"
-        "若问题依赖多轮对话指代（如只说「他」但上文出现过原名与外号的对应），必须把可核对的称呼写进 query；"
-        "同时用 dialogue_context 极简要列出上一轮中与此人相关的语句（一两句即可），供总结时对齐「谁在问谁」。"
-        "不适合：实时新闻、明显与库无关的纯闲聊。"
+        "基于本地投研语料库（研报 / 年报 / 季报 / 重大公告 / 政策原文 / 行业百科 / 财经术语）回答用户问题："
+        "先做向量检索，再把命中的资料拼进提示词由大模型总结。"
+        "**适用场景**：基本面问答、研报观点提炼、年报章节定位、政策原文核对、财经术语解释、"
+        "已入库标的的业务/财务/产能/客户结构等问题。"
+        "**构造 query 的关键**："
+        "  1) 同一标的的多种称呼都串进去（如「宁德时代 CATL 300750」），库内常只写其中一种，单一写法极易漏检；"
+        "  2) 问题依赖多轮指代（「那家公司」「他」）时，必须把上文锚定的具体标的写进 query；"
+        "  3) 用 dialogue_context 极简要列出上一轮的关键事实（如「用户上文聊的是宁德时代 2024 年报钠离子电池产能」），"
+        "     供总结时对齐"
+        "「这次问的还是同一只票」。"
+        "**不适合**：最新股价 / 最新公告 / 最新新闻等实时性问题——请改用 web_search 或 hybrid_summarize。"
     )
 )
 def rag_summarize(query: str, dialogue_context: str = "") -> str:
@@ -61,9 +65,10 @@ def rag_summarize(query: str, dialogue_context: str = "") -> str:
 
 @tool(
     description=(
-        "仅从向量库检索与问题相关的原文片段（不调用大模型生成回答）。"
-        "适用于需要引用原文、核对出处、或 Agent 想先看材料再决定的场景。"
-        "query 请包含对话中的实名、昵称、外号等同指称呼，避免单称与库内写法不一致导致漏检。"
+        "仅从本地投研语料库检索与问题相关的原文片段（不调用大模型生成回答）。"
+        "**适用于**：需要**引用原文段落 + 出处**的场景，如研报原话、年报披露口径、公告原文、政策条款等；"
+        "或 Agent 想先看材料再决定后续工具的场景。"
+        "query 同样应包含标的的多种称呼（公司名 / 股票代码 / 英文名）以避免漏检。"
     )
 )
 def rag_retrieve(query: str) -> str:
@@ -86,11 +91,16 @@ def rag_retrieve(query: str) -> str:
 
 @tool(
     description=(
-        "返回指定 IANA 时区的当前本地日期与时间，例如 Asia/Shanghai、America/New_York、UTC。"
-        "用于回答「现在几点」「今天是几号」等；时区名须合法，否则返回错误说明。"
+        "返回指定金融市场时区的当前本地日期与时间，用于判断 A 股 / 港股 / 美股的"
+        "交易日窗口、开收盘时点、财报披露时点等。常用 timezone_name："
+        "A 股/港股 → Asia/Shanghai 或 Asia/Hong_Kong；"
+        "美股 → America/New_York；"
+        "其他可填合法 IANA 时区或 UTC。"
+        "适用场景：用户询问「现在 A 股开盘了吗」「今天是不是交易日」「美东时间几点」「最新一期季报披露窗口」等。"
+        "本工具只返回时间字符串，不判断节假日；交易日具体规则需结合最新交易所公告。"
     )
 )
-def get_local_datetime(timezone_name: str = "Asia/Shanghai") -> str:
+def get_market_datetime(timezone_name: str = "Asia/Shanghai") -> str:
     name = (timezone_name or "UTC").strip()
     if name.upper() == "UTC":
         tz = timezone.utc
@@ -131,11 +141,18 @@ def _eval_arith_node(node: ast.AST) -> float:
 
 @tool(
     description=(
-        "对仅含数字与 + - * / 和括号的算术表达式求值，例如 (12+3)*4、100/5。"
-        "用于替代模型心算，减少数值错误；不支持幂、函数、变量等非纯算术内容。"
+        "对纯算术表达式（仅含数字与 + - * / 和括号）做精确求值，专用于投研中的"
+        "**财务指标 / 估值 / 同环比**等计算，避免模型心算出错。"
+        "典型用法："
+        "  • PE = 市值 / 净利润 → expression='1500 / 80'"
+        "  • ROE = 净利润 / 净资产 → expression='80 / 500'"
+        "  • 同比增速 = (本期 - 同期) / 同期 → expression='(312.6 - 264.0) / 264.0'"
+        "  • 环比 / 毛利率 / 净利率 / EPS / 股息率 等同理。"
+        "不支持幂、函数、变量；如需百分比请自行 *100 或在外层叙述时换算。"
+        "调用前请把已通过 RAG/Web 拿到的真实数据填进表达式，**不要让本工具构造数据**。"
     )
 )
-def calculate_arithmetic(expression: str) -> str:
+def compute_financial_metric(expression: str) -> str:
     expr = (expression or "").strip()
     if not expr:
         return "表达式为空。"
@@ -345,10 +362,12 @@ def _clean_html(text: str) -> str:
 
 @tool(
     description=(
-        "使用 DuckDuckGo 搜索引擎查询实时信息、新闻、百科知识等。"
-        "适用于回答需要最新数据的问题，如时事新闻、产品信息、特定人物/作品/概念等。"
-        "当用户询问模型训练数据之外的内容（如'最新'、'最近'、'今天'等时效性词汇）时应优先使用。"
-        "query 应尽量简洁明确，包含关键实体名称。"
+        "使用 DuckDuckGo 搜索引擎查询投研相关的**实时信息**："
+        "最新行情评论、最新公告、并购重组、业绩快报、监管动态、行业新闻、宏观数据等。"
+        "**何时使用**：用户问题包含「最新」「今天」「最近」「Q3」「2025 上半年」等时效词，"
+        "或问题涉及模型训练截止后的事件时，必须优先用本工具，禁止凭记忆作答。"
+        "query 建议：标的名称（含代码）+ 事件关键词（如「宁德时代 300750 三季报」「英伟达 NVDA Q3 业绩」）。"
+        "注意：DuckDuckGo HTML 接口为非官方，适合演示与小流量；生产场景请替换为商业 API。"
     )
 )
 def web_search(query: str, max_results: int = 5) -> str:
@@ -468,10 +487,12 @@ def web_search(query: str, max_results: int = 5) -> str:
 
 @tool(
     description=(
-        "同时搜索本地知识库和 Web 获取信息，经统一 Rerank 精排后返回最相关的内容。"
-        "适用于需要结合内部文档和外部实时数据的综合性问题，"
-        "如技术问题（查官方文档+最新实践）、人物/公司查询（查库内资料+最新动态）等。"
-        "query 应包含关键实体名称，以便在两个数据源中准确召回。"
+        "**多路召回**：同时检索本地投研语料库（研报/年报/公告/政策）与 Web（最新新闻/公告/行情评论），"
+        "进入统一候选池后由 Rerank 精排，返回最相关的若干条原文片段。"
+        "**适用场景**：撰写个股 / 行业速评等需要「基本面 + 最新动态」并存的综合性问题；"
+        "或用户提问跨越「历史披露 + 近期变化」的场景（如「宁德时代基本面 + 最近季报有什么变化」）。"
+        "query 应包含标的多种称呼与事件关键词。"
+        "如果只关心「最新动态」用 web_search，只关心「历史披露」用 rag_retrieve / rag_summarize 即可。"
     )
 )
 def hybrid_search(query: str) -> str:
@@ -508,10 +529,10 @@ def hybrid_search(query: str) -> str:
 
 @tool(
     description=(
-        "基于多路召回（Web + 本地知识库）回答用户问题。"
-        "先同时从多个数据源检索相关内容，经 Rerank 精排后，"
-        "由大模型基于最相关的参考资料生成回答。"
-        "适用于需要综合内外部信息的复杂问题。"
+        "**多路召回 + 总结**：从本地投研语料库 + Web 同时召回相关内容，经统一 Rerank 精排后由大模型总结回答。"
+        "**适用场景**：撰写个股速评 / 行业速评 / 晨会纪要等需要「基本面 + 最新动态」综合判断的问题；"
+        "用户问「最近怎么看 X 公司」「X 行业最近有什么变化」「帮我点评 / 速评 X」等综合性提问。"
+        "返回的内容会自然综合两路数据，并标注来源；如果只需要原文片段（不要 LLM 加工）请改用 hybrid_search。"
     )
 )
 def hybrid_summarize(query: str) -> str:
@@ -531,16 +552,15 @@ def hybrid_summarize(query: str) -> str:
 # ---------------------------------------------------------------------------
 
 TOOLS = [
-    rag_summarize,
-    rag_retrieve,
-    hybrid_search,      # 多路召回检索
-    hybrid_summarize,   # 多路召回问答
-    get_local_datetime,
-    calculate_arithmetic,
-    get_weather_by_location,
-    geocode_place,
-    web_search,
+    rag_summarize,                # 本地投研语料：检索 + 总结
+    rag_retrieve,                 # 本地投研语料：仅检索原文
+    hybrid_search,                # 多路召回（本地 + Web）：仅检索原文
+    hybrid_summarize,             # 多路召回（本地 + Web）：检索 + 总结
+    web_search,                   # 实时新闻 / 公告 / 行情评论
+    compute_financial_metric,     # 财务指标 / 估值 / 同环比 等纯算术
+    get_market_datetime,          # 市场时区当前时间（A 股 / 港股 / 美股）
 ]
+
 
 __all__ = [
     "TOOLS",
@@ -549,9 +569,10 @@ __all__ = [
     "rag_retrieve",
     "hybrid_search",
     "hybrid_summarize",
-    "get_local_datetime",
-    "calculate_arithmetic",
+    "web_search",
+    "compute_financial_metric",
+    "get_market_datetime",
+    # 保留以下函数定义但不参与默认工具路由（投研场景不相关，留作扩展）：
     "get_weather_by_location",
     "geocode_place",
-    "web_search",
 ]
