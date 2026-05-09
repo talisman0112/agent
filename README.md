@@ -1,601 +1,415 @@
-# RAG Agent Demo
+# FinSight · 中文投研助理 Agent
 
-基于 **Streamlit** 的对话界面 + **LangChain / LangGraph ReAct Agent**（工具调用）+ **Chroma 向量库** + **通义千问（DashScope）** 的本地知识问答演示项目。支持纯本地 RAG、多路召回（本地 + Web）、Rerank 精排、**上下文压缩**与结构化分块入库。
+> **Equity Research Copilot** —— 面向中文 A 股 / 港美股市场的投研助理 Agent。
+>
+> 基于 **LangGraph ReAct** 工具编排 · **多路混合 RAG**（本地研报库 + DuckDuckGo Web）· **Qwen3-Rerank** 精排 · **三策略上下文压缩** · **东方财富免 Key 行情/基本面** · **滚动摘要长记忆** · **Streamlit 投研主题工作台**。
+
+[![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![LangGraph](https://img.shields.io/badge/LangGraph-ReAct-1C3C5A)](https://langchain-ai.github.io/langgraph/)
+[![Streamlit](https://img.shields.io/badge/UI-Streamlit-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/)
+[![Tongyi Qwen](https://img.shields.io/badge/LLM-Tongyi%20Qwen-FF6A00)](https://dashscope.aliyun.com/)
+![Tools](https://img.shields.io/badge/Tools-10%20%E4%B8%AA-blue)
+![Recall@5](https://img.shields.io/badge/Recall%405-100%25-brightgreen)
+![Token Saved](https://img.shields.io/badge/Token-%E2%88%9254.7%25-success)
 
 ---
 
-## 技术栈
+## 关键指标（30 题黄金集 · 三档对照实测）
 
-| 层级 | 选型 |
-|------|------|
-| 对话 UI | Streamlit（`app.py`） |
-| Agent | `create_agent` + 流式 `stream_mode=["values","updates"]`（`tools/reactagent.py`） |
-| LLM / Embedding / Rerank | 通义（`ChatTongyi`、`DashScopeEmbeddings`、Rerank API，`model/model.py`） |
-| 向量库 | Chroma + 持久化目录（`rag/vector_store.py`） |
-| 分块 | 结构化预分段 + `RecursiveCharacterTextSplitter`（`rag/structured_chunking.py`、`config/chrome.yml`） |
-| 上下文压缩 | Query-Aware 提取式压缩 + 可选 LLM 摘要（`rag/context_compressor.py`） |
+| 指标 | Vector-only | **+Rerank** | **+Rerank+Compression** |
+|---|---|---|---|
+| Recall@5 | 100% | **100%** | **100%** |
+| MRR | 1.000 | **1.000** | **1.000** |
+| Precision@actual | 90.7% | **88.1%** | **88.1%** |
+| 平均输入 tokens | 947 | **429（−54.7%）** | **429** |
+| 平均返回文档数 | 4.93 | **2.30** | **2.30** |
+| 延迟 P50 / P95 (ms) | 2163 / 9293 | 4521 / 15370 | 4521 / 15370 |
+
+> **核心结论**：当前语料下检索召回已饱和（Recall=100%），Rerank 的真正价值在于**精度收紧 + 输入瘦身**——平均输入 token 从 947 降到 429，预期 LLM 推理成本同比下降 ~50%。
+> 完整报告见 [`tests/eval_results.md`](tests/eval_results.md)，自动生成。
 
 ---
 
 ## 快速开始
 
-1. **Python**：建议 3.10+（已在 3.11 验证）。
-2. **安装依赖**：
+```bash
+# 1. 安装依赖
+pip install -r requirements.txt
 
-   ```bash
-   pip install -r requirements.txt
-   ```
+# 2. 配置 API Key（DashScope 提供 LLM / Embedding / Rerank）
+export DASHSCOPE_API_KEY=sk-xxxxxxxx        # Linux / macOS
+# 或 PowerShell: $env:DASHSCOPE_API_KEY="sk-xxxxxxxx"
 
-3. **环境变量**：设置 `DASHSCOPE_API_KEY` 或 `TONGYI_API_KEY`（与 `model/model.py` 一致）。可参考仓库内 `ENV.example`。
-4. **启动界面**：
+# 3. 一键重建本地索引（首次或数据有变更时）
+python scripts/rebuild_index.py --yes
 
-   ```bash
-   streamlit run app.py
-   ```
+# 4. 启动 Streamlit 工作台
+streamlit run app.py
+```
 
-5. **知识入库**：在侧边栏上传文件到 `data/`，点击「执行入库（向量化）」；未变化的文件会依据 `md5.txt` 跳过。
+打开浏览器至 `http://localhost:8501` 即可使用。建议体验：
+
+- **对话模式**：「贵州茅台（600519）现在的股价 + 基本面」 / 「什么是 ROE？请用杜邦分析拆解一下」
+- **报告模式**：「帮我写一份英伟达（NVDA）的个股速评，带上最新行情和估值」
 
 ---
 
-## Agent 完整逻辑链（可视化）
+## 能力速览
 
-高层上，每一次用户提问都会进入 **ReAct 式循环**：模型根据系统/动态提示词决定是否调用工具 → 执行工具 → 将工具结果写回对话 → 再生成回复，直到结束。流式输出时，前端只展示 **最终助手文本的增量**；工具调用详情可在展开器与日志中查看。
+### 三类核心能力
 
-**数据流要点（与你的「合并再 Rerank」一致）**：在 `hybrid_*` 中，**外网/Web 召回**与**向量库检索**得到的片段先进入**同一合并候选池**，再经 **Rerank 统一精排**；精排后的 Top-N 才是后续使用的「参考资料」。这些资料要么经 `*_retrieve` / `hybrid_search` **原样写入 `ToolMessage`**，由 **Agent 主模型（ChatTongyi）** 结合对话组织最终回答；要么在 `*_summarize` 路径下**先在工具内**用同一批精排资料调用 LLM 生成摘要，再把摘要作为工具返回值交给主模型（主模型仍可继续多轮推理）。
+| 维度 | 能力 |
+|---|---|
+| **本地投研问答** | 研报 / 年报 / 公告 / 政策 / 行业百科 / 财经术语，结构化分块 + 向量检索 + Rerank + 按需压缩 |
+| **实时市场数据** | A 股 / 港股 / 美股的行情快照、基本面快照（PE-TTM / PB / 市值 / 换手率），多种 ticker 写法兼容、NASDAQ 拿不到自动回退 NYSE |
+| **结构化报告** | 个股速评 / 行业速评 / 晨会纪要 三种模板，按用户意图自动选用 |
 
-### 方框图：从用户输入到模型回答（总览）
+### 10 个 @tool（注册到 LangGraph ReAct Agent）
 
-建议使用等宽字体查看；对应实现主要在 `app.py`、`tools/reactagent.py`、`tools/mid_ware.py`。
+| # | 工具 | 作用 |
+|---|---|---|
+| 1 | `rag_summarize` | 本地投研语料库：检索 → Rerank → LLM 总结 |
+| 2 | `rag_retrieve` | 仅检索原文（带出处），不调 LLM 生成 |
+| 3 | `hybrid_summarize` | 本地 + DuckDuckGo Web → 统一 Rerank → LLM 总结 |
+| 4 | `hybrid_search` | 同上，仅返回精排后的参考文本 |
+| 5 | `web_search` | DuckDuckGo HTML，用于实时新闻 / 公告 / 行情评论 |
+| 6 | `get_stock_quote` | 行情快照（最新价 / 涨跌 / 成交），东财 push2，免 Key |
+| 7 | `get_stock_basics` | 基本面快照（市值 / PE-TTM / PE-LYR / PB / 换手率），同上 |
+| 8 | `convert_currency` | 汇率换算（USD / CNY / HKD / EUR / JPY），open.er-api.com |
+| 9 | `compute_financial_metric` | 财务指标 / 估值 / 同环比纯算术 |
+| 10 | `get_market_datetime` | A 股 / 港股 / 美股市场当地时间 |
+
+> 工具调用由模型按问题自主决定（非硬编码路由），description 里描述了**何时调用 / 何时不要调用**，配合 `prompts/main_prompt.txt` 投研 Copilot 角色卡引导。
+> 实现见 `tools/agent_tool.py` / `tools/finance_tool.py`。
+
+### 数据语料（`data/`）
+
+| 子目录 | 内容 | 状态 |
+|---|---|---|
+| `glossary/` | 财经术语词典（80+ 术语 / 6 大估值方法 / 三大报表速查） | ✅ 已内置 |
+| `industry_kb/` | 行业百科（新能源车 / 半导体 / AI 算力） | ✅ 已内置 |
+| `_demo/` | 明标虚构演示样本（虚构公司 999001 + 虚构 AI 算力研报） | ✅ 已内置 |
+| `research_reports/` | 真实券商研报 | ⏳ 待用户按 `data/README.md` 接入 |
+| `company_filings/` | 上市公司年报 / 季报 / 公告 | ⏳ 待用户按 `data/README.md` 接入 |
+| `policy/` | 央行 / 证监会 / 部委政策原文 | ⏳ 待用户按 `data/README.md` 接入 |
+
+---
+
+## 工作流：从用户输入到结构化回答
+
+每次提问都会进入 **ReAct 循环**：模型根据系统提示词决定是否调用工具 → 执行工具 → 把结果作为 ToolMessage 写回对话 → 再生成回复，直到结束。流式输出仅展示 **最终助手文本的增量**，工具调用详情可在展开器中查看。
+
+### 端到端总览（合并对话 + 报告模式）
 
 ```
-┌─────────────────────┐
-│      用户输入        │
-│  (Streamlit 输入框)  │
-└──────────┬──────────┘
-           │
-           ▼
-┌─────────────────────┐
-│      app.py         │
-│  对话历史 + 报告模式  │
-└──────────┬──────────┘
-           │
-           ▼
-┌─────────────────────┐
-│     ReactAgent      │
-│  历史 → Human/AI    │
-│  Message + 本轮问题  │
-└──────────┬──────────┘
-           │
-           ▼
-┌─────────────────────┐     ┌─────────────────────┐
-│   LangGraph Agent   │     │  Middleware         │
-│   create_agent      │◀───▶│  主提示词 ⟷ 报告提示词 │
-│   + TOOLS           │     │  (report_mode)      │
-└──────────┬──────────┘     └─────────────────────┘
-           │
-           ▼
-┌─────────────────────┐
-│    ChatTongyi       │
-│  推理 / 是否调工具   │
-└──────────┬──────────┘
-           │
-     ┌─────┴───────────────────────────┐
-     ▼                                 ▼
-┌─────────────────────┐   ┌─────────────────────────┐
-│    直接文本回答      │   │  模型发出 tool_calls     │
-│   （未走工具）       │   │  rag / hybrid / web …   │
-└──────────┬──────────┘   └────────────┬────────────┘
-           │                           │
-           │                           ▼
-           │               ┌─────────────────────────┐
-           │               │ 执行 RAG / Hybrid 工具   │
-           │               │  向量库检索 +（Hybrid 时 │
-           │               │   Web）→ 合并 → Rerank    │
-           │               │ → 参考资料 → ToolMessage │
-           │               │   再回到主模型推理       │
-           │               └────────────┬────────────┘
-           │                           │
-           └─────────────┬─────────────┘
-                         ▼
-     ┌─────────────────────┐
-     │  最终 AIMessage 文本  │
-     │  ReactAgent 流式增量   │
-     └──────────┬──────────┘
+┌──────────────────────────┐
+│      用户输入             │
+│  Streamlit 输入框         │
+└─────────────┬────────────┘
               │
               ▼
-     ┌─────────────────────┐
-     │  write_stream 展示   │
-     │  用户看到助手回答     │
-     └─────────────────────┘
+┌──────────────────────────┐         ┌─────────────────────────┐
+│      app.py              │ ◀──────▶│ 长记忆管理器               │
+│  对话历史 + 报告模式开关    │         │ (recent window +         │
+└─────────────┬────────────┘         │  rolling summary)        │
+              │                      └─────────────────────────┘
+              ▼
+┌──────────────────────────┐
+│     ReactAgent           │
+│ 历史 → Human/AI Message  │
+│ + 历史摘要 + 本轮问题      │
+└─────────────┬────────────┘
+              │
+              ▼
+┌──────────────────────────┐         ┌─────────────────────────┐
+│  LangGraph create_agent  │ ◀──────▶│ middleware              │
+│  + TOOLS（10 个）         │         │ runtime.context["report"]│
+│                          │         │ 切换 main / report prompt│
+└─────────────┬────────────┘         └─────────────────────────┘
+              │
+              ▼
+┌──────────────────────────┐
+│   ChatTongyi 推理         │
+│   是否调用工具？           │
+└─────────────┬────────────┘
+              │
+        ┌─────┴────────────────────┐
+        │                          │
+        ▼                          ▼
+┌──────────────────┐     ┌─────────────────────────────┐
+│  直接文本回答     │     │ 模型发出 tool_calls          │
+│  （未走工具）     │     │  rag / hybrid / web /       │
+│                  │     │  stock / metric / fx ...     │
+└────────┬─────────┘     └────────────┬─────────────────┘
+         │                            │
+         │                            ▼
+         │              ┌─────────────────────────────┐
+         │              │ 执行工具                     │
+         │              │ → ToolMessage               │
+         │              │ → 主模型再推理 (ReAct 多步)  │
+         │              └────────────┬─────────────────┘
+         │                           │
+         └────────────┬──────────────┘
+                      ▼
+            ┌──────────────────────┐
+            │ 最终 AIMessage        │
+            │ Streamlit 流式展示    │
+            └──────────────────────┘
 ```
 
-### 方框图：合并 → Rerank → 进入 Agent 上下文（核心数据流）
+### Hybrid RAG 数据流（本地 + Web 合并精排）
 
-Hybrid 与「仅本地」的差异只在左侧支路：单路 RAG 无 Web，合并池里只有向量库命中。
-
-```
-                        ┌─────────────────────────────────────────┐
-                        │      RAG / Hybrid 工具（一次调用）        │
-┌──────────┐            │                                         │
-│ 用户问题  │───────────│  ┌──────────────┐   ┌──────────────┐   │
-└──────────┘            │  │ 向量库 Chroma │   │ Web 召回      │   │
-  （tool 入参）          │  │ 向量检索 Top-K│   │ （仅 Hybrid） │   │
-                        │  └───────┬──────┘   └──────┬───────┘   │
-                        │          └─────────┬───────┘            │
-                        │                    ▼                    │
-                        │           ┌─────────────────┐           │
-                        │           │   合并候选池     │           │
-                        │           │ 统一 Document   │           │
-                        │           └────────┬────────┘           │
-                        │                    ▼                    │
-                        │           ┌─────────────────┐           │
-                        │           │ Rerank 统一精排  │           │
-                        │           │   Top-N 片段    │           │
-                        │           └────────┬────────┘           │
-                        │                    ▼                    │
-                        │           ┌─────────────────┐           │
-                        │           │ 格式化为参考资料  │           │
-                        │           │ _format_docs …  │           │
-                        │           └────────┬────────┘           │
-                        └────────────────────┼────────────────────┘
-                                             │
-              ┌──────────────────────────────┴──────────────────────────────┐
-              ▼                                                               ▼
-┌─────────────────────────────┐                         ┌─────────────────────────────┐
-│ rag_retrieve / hybrid_search │                         │ rag_summarize /             │
-│                             │                         │ hybrid_summarize            │
-│ 工具返回值 = 精排后参考原文   │                         │ 同上批资料 → 工具内 RAG     │
-│ → ToolMessage               │                         │ Prompt + 子 LLM → 摘要字符串 │
-│ → Agent 主模型阅读后写最终答 │                         │ → ToolMessage（摘要）        │
-│   （ReAct 下一轮）           │                         │ → 主模型可再润色或收束       │
-└─────────────────────────────┘                         └─────────────────────────────┘
-              │                                                               │
-              └───────────────────────────┬───────────────────────────────────┘
-                                          ▼
-                               ┌─────────────────────┐
-                               │ ChatTongyi 主模型    │
-                               │ （对话里继续推理）    │
-                               └─────────────────────┘
-```
-
-### 端到端数据流（Mermaid，可选对照）
-
-```mermaid
-flowchart TB
-    subgraph UI["Streamlit（app.py）"]
-        U[用户输入]
-        H[对话历史 session_state.messages]
-        R[报告模式 / 对话模式 toggle]
-    end
-
-    subgraph Agent["ReactAgent（tools/reactagent.py）"]
-        M[组装消息]
-        S[agent.stream]
-        TC[last_tool_calls]
-    end
-
-    subgraph MW["Middleware（tools/mid_ware.py）"]
-        P[dynamic_prompt: report ↔ main]
-    end
-
-    subgraph Tools["TOOLS（tools/agent_tool.py）"]
-        RAG[rag_*]
-        HY[hybrid_*]
-        WS[web_search 等]
-    end
-
-    subgraph RAGInner["rag_* / hybrid_* 工具内部"]
-        VS[(Chroma 向量检索)]
-        WEB[Web 召回 仅 hybrid_*]
-        POOL[合并候选池 本地±Web]
-        RR[Rerank 统一精排]
-        CC[上下文压缩 ContextCompressor]
-        REF[Top-N 参考资料]
-        VS --> POOL
-        WEB --> POOL
-        POOL --> RR
-        RR --> CC
-        CC --> REF
-    end
-
-    subgraph BackToAgent["回到主 Agent 对话上下文"]
-        TM[ToolMessage]
-        MAIN[ChatTongyi 主模型读消息再推理]
-    end
-
-    U --> M
-    H --> M
-    R --> P
-    M --> S
-    S --> MW
-    MW --> Tools
-    RAG --> RAGInner
-    HY --> RAGInner
-    REF --> TM
-    WS -->|独立工具 直接返回| TM
-    TM --> MAIN
-    S --> TC
-```
-
-说明：`rag_*` 仅有 Chroma 支路进入合并池（「合并池」在此仍表示进入 Rerank 前的统一候选列表）。**`rag_summarize` / `hybrid_summarize`** 在工具内会再用 **子 LLM** 消费 `REF` 生成摘要字符串，该字符串同样以 `ToolMessage` 形式回到主模型；**`rag_retrieve` / `hybrid_search`** 则把精排后的参考原文直接作为 `ToolMessage`，由主模型组织最终回答。
-
-### ReAct 与流式输出（简化）
-
-```mermaid
-sequenceDiagram
-    participant User as 用户
-    participant App as app.py
-    participant RA as ReactAgent
-    participant LLM as ChatTongyi
-    participant Tool as 工具函数
-
-    User->>App: 输入问题
-    App->>RA: execute(prompt, history, report_mode)
-    loop ReAct 多步（上限见 agent 配置）
-        RA->>LLM: messages + 工具 schema
-        alt 模型返回 tool_calls
-            LLM-->>RA: AIMessage(tool_calls)
-            RA->>Tool: 执行 rag / hybrid / web 等
-            Tool-->>RA: ToolMessage(结果)
-        else 模型直接作答
-            LLM-->>RA: AIMessage(文本)
-        end
-    end
-    RA-->>App: stream 增量文本
-    App-->>User: write_stream 展示
-```
-
-### 提示词与「报告模式」
-
-- **主对话**：`utils/prompts_hander.get_main_prompt()`  
-- **报告模式**（结构化、可沉淀）：`get_report_prompt()`  
-- 切换由 `app.py` 的 `report_mode` 传入 `ReactAgent.execute(..., report_mode=True)`，经 `middleware` 里的 `report_prompt_switch` 在 `request.runtime.context["report"]` 上分支。
-
----
-
-## 工具一览
-
-Agent 将所有工具绑定到 `create_agent`；**具体调用哪几个由模型按问题自主决定**（非硬编码路由）。
-
-| 工具 | 作用 |
-|------|------|
-| `rag_summarize` | 本地向量库：检索 → Rerank → LLM 总结回答 |
-| `rag_retrieve` | 仅检索片段，不调用 LLM 生成 |
-| `hybrid_summarize` | 本地 + DuckDuckGo Web → 统一 Rerank → LLM 总结 |
-| `hybrid_search` | 同上，仅返回精排后的参考文本 |
-| `web_search` | 仅 Web（HTML 接口，演示向） |
-| `get_local_datetime` | IANA 时区当前时间 |
-| `calculate_arithmetic` | 安全算术（AST，无 `eval`） |
-| `get_weather_by_location` / `geocode_place` | Open-Meteo，需外网 |
-| `web_search` | 时效性/百科类外网检索 |
-
-工具说明与边界条件见 `tools/agent_tool.py` 内各 `@tool(description=...)`。
-
----
-
-## RAG 策略
-
-### 单路本地 RAG（`RAGSummarize`）
-
-**方框图**（工具 `rag_summarize` / `rag_retrieve`；仅 **向量库** 一路进入候选池，无 Web）：
-
-```
-┌─────────────────────┐
-│   用户 query        │
-│ (Agent → 工具入参)   │
-└──────────┬──────────┘
-           │
-           ▼
-┌─────────────────────┐
-│   本地向量库         │
-│      (Chroma)       │
-│   向量检索 Top-K    │
-└──────────┬──────────┘
-           │
-           ▼
-┌─────────────────────┐
-│    Rerank 精排       │
-│   (qwen3-rerank)    │
-│   • 阈值过滤         │
-│   • 指令引导         │
-│   • 去重            │
-└──────────┬──────────┘
-           │
-           ▼
-┌─────────────────────┐
-│   上下文压缩（可选） │
-│  (ContextCompressor) │
-│   • 提取/摘要/混合   │
-│   • 质量评估        │
-│   • Token 预算控制   │
-└──────────┬──────────┘
-           │
-           ▼
-┌─────────────────────┐
-│  Top-N 参考资料      │
-│  (_format_docs)     │
-└──────────┬──────────┘
-           │
-     ┌─────┴─────┐
-     ▼           ▼
-┌─────────┐ ┌─────────────────────┐
-│rag_     │ │ rag_summarize       │
-│retrieve │ │ 拼 RAG Prompt+子LLM  │
-│ToolMsg  │ │ ToolMsg 为摘要       │
-│→主模型  │ │ →主模型可继续推理    │
-└─────────┘ └─────────────────────┘
-```
-
-- **粗排**：`rerank_search_k`（默认 20）条向量候选。  
-- **精排**：默认 **增强版 Rerank**（`rag/reranker_enhanced.py`）：分数阈值、`dedup_threshold`、instruct 模式与可选自动 instruct。  
-- **链**：LangChain `RunnableLambda` 检索+Rerank → `_format_docs` → `PromptTemplate` → `chat_model`（`rag/ragsummarize.py`）。
-
-### 多路混合 RAG（`HybridRAG`）
-
-**方框图**（工具 `hybrid_summarize` / `hybrid_search`；两路并行召回后合并再精排）：
+`hybrid_summarize` / `hybrid_search` 内部把**两路召回合并到统一候选池**，**单次** Rerank 精排，避免双源加权偏置。
 
 ```
 ┌─────────────────────┐     ┌─────────────────────┐
-│      Web 搜索        │     │     本地向量库        │
-│   (DuckDuckGo)      │     │      (Chroma)       │
+│   Web 召回           │     │  本地向量检索         │
+│  DuckDuckGo HTML    │     │  Chroma top-K        │
+│  → Document(web)    │     │  → Document(local)   │
 └──────────┬──────────┘     └──────────┬──────────┘
-           │                         │
-           │    同一 query 各自召回   │
-           └───────────┬─────────────┘
-                       ▼
-              ┌─────────────────────┐
-              │     结果合并池        │
-              │  Document 列表统一    │
-              │  local / web 打标    │
-              └──────────┬──────────┘
-                         │
-                         ▼
-              ┌─────────────────────┐
-              │    Rerank 精排       │
-              │   (qwen3-rerank)    │
-              │   • 阈值过滤         │
-              │   • 指令引导         │
-              │   • 去重            │
-              └──────────┬──────────┘
-                         │
-                         ▼
-              ┌─────────────────────┐
-              │   上下文压缩（可选） │
-              │  (ContextCompressor) │
-              │   • 提取/摘要/混合   │
-              │   • Token 预算控制   │
-              └──────────┬──────────┘
-                         │
-                         ▼
-              ┌─────────────────────┐
-              │  Top-N 格式化        │
-              │  = Agent 用参考资料   │
-              └──────────┬──────────┘
-                         │
-         ┌───────────────┴────────────────┐
-         ▼                                ▼
-┌─────────────────────┐      ┌─────────────────────┐
-│  hybrid_search      │      │  hybrid_summarize     │
-│ ToolMessage：参考原文 │      │ 参考→工具内 RAG+LLM    │
-│ → 主模型写最终回答   │      │ → ToolMessage 为摘要   │
-└─────────────────────┘      └─────────────────────┘
-         │                                │
-         └────────────────┬───────────────┘
+           │   同一 query 各自召回       │
+           └──────────────┬─────────────┘
                           ▼
-                 ┌─────────────────────┐
-                 │ Agent 主模型下一轮    │
-                 │ （ReAct 消息链路）   │
-                 └─────────────────────┘
+                ┌─────────────────────┐
+                │   合并候选池          │
+                │  source_channel 标记  │
+                └──────────┬──────────┘
+                           ▼
+                ┌─────────────────────┐
+                │  Qwen3-Rerank 精排   │
+                │  • 阈值过滤（≥0.25）│
+                │  • 去重（≥0.80）    │
+                │  • Instruct 引导     │
+                └──────────┬──────────┘
+                           ▼
+                ┌─────────────────────┐
+                │  上下文压缩（按需）  │
+                │  AUTO 策略路由       │
+                │  short → none        │
+                │  code/fact → extract │
+                │  long → hybrid       │
+                └──────────┬──────────┘
+                           ▼
+            ┌──────────────────────────┐
+            │  Top-N 参考资料            │
+            │  → ToolMessage             │
+            │  → Agent 主模型组织回答     │
+            └──────────────────────────┘
 ```
 
-- 本地文档带 `metadata.source_channel = "local"`，Web 解析结果带 `"web"`，便于观察来源。  
-- Web 正文由 `web_search` 返回文本再正则解析为 `Document`（`HybridRAG._parse_web_results`）。  
-- **注意**：`HybridRAG` 构造时从 `rerank_config` 读取 `hybrid_*` 等键；若要在运行时完全同步 `config/rag.yml` 中的混合检索段落，需保证这些键已并入 `utils/config_hander.py` 中的 `rerank_config`（或构造 `HybridRAG` 时显式传参）。未并入时仍可使用代码内默认值（与当前 yaml 示例一致：Web 5、本地 15、Rerank Top-5）。
+> 单路本地 RAG（`rag_summarize` / `rag_retrieve`）流程一致，只是合并池里只有 `Document(local)`，无 Web 一支。
 
-### Rerank 配置要点（`config/rag.yml`）
+### Demo 三连击（已可在内置数据集上跑通）
 
-| 配置项 | 含义 |
-|--------|------|
-| `rerank_model` | 如 `qwen3-rerank` |
-| `rerank_top_n` | 单路 RAG 精排保留条数 |
-| `rerank_search_k` | 向量粗排条数（应大于 top_n） |
-| `rerank_enhanced` | 是否增强版 Rerank |
-| `rerank_score_threshold` | 分数阈值（单路与混合路在代码里默认阈值可能不同，见 `RAGSummarize` / `HybridRAG`） |
-| `rerank_dedup_threshold` | 去重相似度阈值 |
-| `rerank_instruct_mode` / `rerank_auto_instruct` | 指令模式与自动选择 |
-
-### 上下文压缩（Context Compression）
-
-**解决问题**：父文档展开后内容过长（常 >6000 tokens），超出 LLM 上下文限制；检索结果包含大量与查询无关的冗余信息。
-
-**方框图**（在 Rerank 后插入压缩层）：
-
-```
-┌─────────────────────┐
-│   Rerank 精排结果    │
-│   Top-N 文档        │
-│   (可能超长)        │
-└──────────┬──────────┘
-           │
-           ▼
-┌─────────────────────┐
-│   上下文压缩器       │
-│   (ContextCompressor)│
-│   • 策略选择 (AUTO)  │
-│   • 提取式压缩      │
-│   • 质量评估        │
-└──────────┬──────────┘
-           │
-           ▼
-┌─────────────────────┐
-│  压缩后参考资料      │
-│  (≤3500 tokens)     │
-│  [已压缩标记]       │
-└──────────┬──────────┘
-           │
-           ▼
-    ┌──────────────┐
-    │  ToolMessage │
-    └──────────────┘
-```
-
-**压缩策略**：
-
-| 策略 | 适用场景 | 说明 |
-|------|----------|------|
-| `extract` (提取式) | 代码查询、事实查询 | 保留与查询相关的段落，代码块完整保护 |
-| `summarize` (摘要式) | 超长文档、概括性查询 | 使用 LLM 生成查询相关摘要（需 API 调用） |
-| `hybrid` (混合式) | 极长文档 | 先提取减少 50%，再摘要精练 |
-| `auto` (自动) | 默认 | 根据查询类型自动选择策略 |
-
-**智能策略选择规则**：
-- 代码关键词（`代码`、`function`、`api` 等）→ `extract`
-- 事实关键词（`什么是`、`多少`、`定义` 等）→ `extract`
-- 超长文档（>2 倍预算）→ `hybrid`
-
-**配置要点**（`config/rag.yml`）：
-
-| 配置项 | 默认值 | 说明 |
-|--------|--------|------|
-| `compression_enabled` | `true` | 是否启用上下文压缩 |
-| `compression_max_tokens` | `3500` | 压缩后目标 Token 上限 |
-| `compression_min_tokens` | `200` | 单个文档最小保留 Token |
-| `compression_extract_ratio` | `0.6` | 提取式压缩保留比例 |
-| `compression_use_llm` | `false` | 是否使用 LLM 生成摘要（影响成本） |
-| `compression_strategy` | `auto` | 压缩策略：auto/extract/summarize/hybrid |
-
-**效果指标**（实测）：
-- Token 消耗减少：30-60%
-- 处理时间：<100ms（提取式，纯本地计算）
-- 质量保留：>85%（关键词保留率）
+| Demo | 输入示例 | 走线 | 考点 |
+|---|---|---|---|
+| **1. 纯本地 RAG** | "什么是 ROE？请用杜邦分析拆解一下" | `rag_summarize` → 命中 `glossary/financial_terms.md` → Rerank Top-3 → LLM 总结 | 检索 + Rerank + 子链 |
+| **2. Hybrid + 报告 + 行情** | [报告 ON] "帮我写一份英伟达（NVDA）的个股速评" | `hybrid_summarize`（本地行业 + Web 新闻）→ `get_stock_quote` → `get_stock_basics` → `compute_financial_metric` → 报告模板 | **多步工具编排（4-6 次工具调用）** |
+| **3. 长对话记忆** | 第 1 轮"看下半导体行业" → 第 5 轮"那刚才聊的产业里 HBM 怎么定义？" | 滚动摘要保留"用户关心半导体" → RAG 检索把摘要作为 `dialogue_context` 喂入 | 最近窗口 + 滚动摘要 |
 
 ---
 
-## Chunk（分块）策略
+## RAG 链路细节
 
-入库路径：`VectorStoreService.load_data()`（`rag/vector_store.py`）。
+### 配置要点（`config/rag.yml`）
 
-**方框图**（知识入库流水线）：
+| 配置项 | 默认 | 说明 |
+|---|---|---|
+| `rerank_model` | `qwen3-rerank` | DashScope Rerank 模型 |
+| `rerank_search_k` | 20 | 向量粗排候选数 |
+| `rerank_top_n` | 5 | 精排后保留 top-N |
+| `rerank_score_threshold` | 0.25 | 分数阈值（低于此值丢弃） |
+| `rerank_dedup_threshold` | 0.80 | 文本相似度去重阈值 |
+| `rerank_instruct_mode` / `auto_instruct` | `qa` / `true` | 指令模式与自动选择 |
+| `compression_enabled` | `true` | 是否启用上下文压缩 |
+| `compression_max_tokens` | 3500 | 压缩后目标 token 上限（短输入自动跳过）|
+| `compression_strategy` | `auto` | 压缩策略：`auto` / `extract` / `summarize` / `hybrid` |
+
+### 上下文压缩策略
+
+| 策略 | 适用场景 | 实现 |
+|---|---|---|
+| `extract`（提取式）| 代码 / 事实查询 | 按查询相关性保留段落，纯本地计算（<100ms） |
+| `summarize`（摘要式）| 超长 / 概括性查询 | 调用 LLM 生成查询相关摘要 |
+| `hybrid`（混合式）| 极长文档 | 先 extract 减半，再 summarize 精练 |
+| `auto`（默认）| 全部 | 按查询关键词与文档长度自动路由 |
+
+**实测**：当前内置语料的 reranked 结果加起来 < 3500 token，压缩器统一选 `none`（**按需启用**，不对短文档过度压缩）。压缩力度模拟（300 tokens 紧预算）显示 extractive 策略最大单题压缩率 **82.4%**，证明能力在线、待真实长文档（年报 PDF）接入后激活。
+
+---
+
+## 入库流水线（`rag/vector_store.py`）
 
 ```
-┌─────────────────────┐
-│  data/ 下知识文件    │
-│ txt pdf docx …      │
-└──────────┬──────────┘
-           │  MD5 未入库则继续
-           ▼
-┌─────────────────────┐
-│   按后缀选择 Loader  │
-└──────────┬──────────┘
-           │
-           ▼
-┌─────────────────────┐
-│  结构化预分段（可选） │
-│  标题/章节 → section │
-└──────────┬──────────┘
-           │
-           ▼
-┌─────────────────────┐
-│ RecursiveCharacter  │
-│ TextSplitter 切块    │
-└──────────┬──────────┘
-           │
-           ▼
-┌─────────────────────┐
-│ 【章节】前缀（可选）  │
-└──────────┬──────────┘
-           │
-           ▼
-┌─────────────────────┐
-│ Chroma.add_documents │
-│ 写入向量库          │
-└─────────────────────┘
+data/ 多级子目录递归扫描（支持 .md / .txt / .pdf / .docx / .xlsx / .pptx）
+   │
+   ├─ 跳过非语料文件（README.md / .gitkeep / CHANGELOG.md ...）
+   ├─ MD5 ledger 增量入库（已入库则跳过）
+   │
+   ▼
+按后缀路由 Loader
+   │
+   ▼
+结构化预分段（rag/structured_chunking.py）
+   • 识别 Markdown # ~ ######
+   • 识别中文 第 X 章 / 一二三 / 1.
+   • 每段写入 metadata.section
+   │
+   ▼
+RecursiveCharacterTextSplitter
+   • chunk_size=512, chunk_overlap=80
+   • 9 级分隔符回退（"\n\n" → "\n" → 中文句读 → 字符级）
+   │
+   ▼
+Parent-Child 映射
+   • 子块入 Chroma 做向量检索
+   • 父块（带 【章节】… 前缀）入 SQLite，命中后展开供 Rerank
+   │
+   ▼
+Chroma.add_documents → db/chroma/
 ```
 
-**结构化预分段**（`rag/structured_chunking.py`）识别：
+**重建索引**：
 
-- Markdown 标题：`#`～`######`  
-- 中文独立行：`第…章/节/篇`  
-- 序号标题：`1.`、`一、` 等形式（含行长度上限，降低正文误匹配）
+```bash
+python scripts/rebuild_index.py --yes      # 清 chroma + parent_store + md5 → 重新入库
+python scripts/rebuild_index.py --dry-run  # 仅打印将要清理 / 入库的内容
+```
 
-每个子段写入 `metadata.section`（若有），最终 chunk 可选 **`【章节】…` 前缀**，增强向量与 Rerank 对章节语义的感知。
+---
 
-**递归切分参数**（`config/chrome.yml`）：
+## 仓库结构
 
-- `chunk_size` / `chunk_overlap`：默认 512 / 80。  
-- `separators`：多级分隔符回退，优先段落与中文句读，最后字符级切分。  
-- **增量入库**：同内容 MD5 已在 `md5_path` 则跳过，避免重复向量化。
+```
+agent/
+├── app.py                          # Streamlit 投研主题工作台（深蓝 + 金 + A 股涨跌色）
+├── prompts/
+│   ├── main_prompt.txt             # FinSight 投研 Copilot 角色卡（含合规免责）
+│   ├── rag_prompt.txt              # RAG 子链 prompt（强调数据三要素）
+│   └── report_prompt.txt           # 三种报告模板（个股 / 行业 / 晨会）
+├── tools/
+│   ├── reactagent.py               # ReAct Agent + 流式
+│   ├── agent_tool.py               # RAG / Web / 算 / 时间工具
+│   ├── finance_tool.py             # 行情 / 基本面 / 汇率工具（P1-1 新增）
+│   └── mid_ware.py                 # 报告模式动态 prompt 切换
+├── rag/
+│   ├── vector_store.py             # Chroma 入库 + 父子块映射
+│   ├── structured_chunking.py      # 中文章节正则预分段
+│   ├── ragsummarize.py             # RAGSummarize + HybridRAG
+│   ├── reranker_enhanced.py        # 阈值过滤 + 去重 + Instruct
+│   ├── context_compressor.py       # 三策略上下文压缩
+│   └── parent_store.py             # 父块 SQLite 存储
+├── memory/
+│   └── conversation_memory.py      # 最近窗口 + 滚动摘要 双层记忆
+├── model/model.py                  # ChatTongyi + DashScopeEmbeddings + Rerank
+├── data/                           # 语料根目录（含 README 数据采集指南）
+│   ├── glossary/                   # 财经术语词典
+│   ├── industry_kb/                # 行业百科
+│   ├── _demo/                      # 演示样本（明标虚构）
+│   ├── research_reports/           # 真实研报（待用户填充）
+│   ├── company_filings/            # 公司公告（待用户填充）
+│   └── policy/                     # 政策原文（待用户填充）
+├── tests/
+│   ├── golden_set.yml              # 30 题检索黄金集
+│   └── eval_results.md             # 自动生成的评估报告
+├── scripts/
+│   ├── rebuild_index.py            # 一键重建 chroma + 父块 + md5
+│   ├── smoke_test_rag.py           # RAG 冲烟（7 题）
+│   ├── smoke_test_finance.py       # 金融工具冲烟（17 用例）
+│   └── eval_retrieval_metrics.py   # 检索性能评估（三档对照 + 压缩力度模拟）
+├── config/                         # YAML 配置（rag / chrome / agent / prompts）
+├── db/                             # Chroma 持久化（运行后生成）
+└── log/agent.log                   # 模型与工具调用轨迹
+```
+
+---
+
+## 测试与评估
+
+```bash
+# 1. RAG 冲烟（7 题关键词命中检查）
+python scripts/smoke_test_rag.py
+
+# 2. 金融工具冲烟（17 用例：A/港/美股 + 汇率 + 错误处理）
+python scripts/smoke_test_finance.py
+
+# 3. 检索性能完整评估（30 题 + 三档对照 + 压缩力度模拟，~270s）
+python scripts/eval_retrieval_metrics.py
+# 报告自动写入 tests/eval_results.md，可贴进简历或 README
+
+# 4. pytest 跑结构化分块 / 混合检索 / 上下文压缩等单元测试
+pytest tests/ -q
+```
+
+**当前指标**：
+- RAG 冲烟：✅ **7/7 通过**（Top-1 rerank 高分占比 6/7 ≥ 0.7，最高 0.977）
+- 金融工具冲烟：✅ **17/17 通过**（含 A 股沪深、港股、美股 NASDAQ/NYSE 自动回退、错误 ticker / 错误币种 / 负数金额）
+- 检索性能：✅ **Recall@5 = 100%，MRR = 1.000**，Rerank 减输入 token **−54.7%**
 
 ---
 
 ## 配置与日志
 
 | 文件 | 内容 |
-|------|------|
-| `config/rag.yml` | 对话模型、embedding、Rerank、混合检索（文档说明） |
+|---|---|
+| `config/rag.yml` | 对话模型、embedding、Rerank、Hybrid 检索、上下文压缩 |
 | `config/chrome.yml` | Chroma 路径、集合名、`k`、分块、结构化分块开关 |
-| `config/agent.yml` | Agent 迭代上限等（`max_iterations` 等） |
-| `config/prompts.yml` | 提示词片段（经 `utils/prompts_hander` 加载） |
-| `log/agent.log` | 模型与工具调用轨迹（与 `ReactAgent` 中 `log_tool_calls` 配合） |
-
----
-
-## 仓库结构（核心）
-
-```
-agent/
-├── app.py                 # Streamlit 入口
-├── tools/
-│   ├── reactagent.py      # ReAct Agent + 流式
-│   ├── agent_tool.py      # 全部 @tool 定义
-│   └── mid_ware.py        # 日志 + 报告/主提示词切换
-├── rag/
-│   ├── vector_store.py    # Chroma 入库与检索服务
-│   ├── structured_chunking.py
-│   ├── ragsummarize.py    # RAGSummarize + HybridRAG
-│   ├── reranker.py
-│   ├── reranker_enhanced.py
-│   └── context_compressor.py  # 上下文压缩（新增）
-├── model/model.py         # ChatTongyi + DashScopeEmbeddings
-├── config/                # YAML 配置
-├── data/                  # 知识文件目录（实际数据不入库）
-├── db/chroma/             # 向量持久化（本地生成）
-└── tests/                 # 单元/对比测试
-```
-
----
-
-## 测试
-
-```bash
-pytest tests/ -q
-```
-
-含结构化分块、混合检索、上下文压缩等用例（见 `tests/`）。
-
-**上下文压缩专项测试**：
-```bash
-python -m tests.test_context_compression
-python -m examples.context_compression_demo
-```
+| `config/agent.yml` | Agent 迭代上限、长记忆参数 |
+| `config/prompts.yml` | 提示词路径（指向 `prompts/*.txt`） |
+| `log/agent.log` | 模型 / 工具调用轨迹（与 `ReactAgent.log_tool_calls` 配合） |
 
 ---
 
 ## 说明与限制
 
-- **Web 搜索**：DuckDuckGo HTML 非官方接口，适合演示；生产请换官方 API 并注意合规与频控。  
-- **天气 / 地理**：依赖外网 Open-Meteo。  
-- **Embedding 未就绪**：未装 `dashscope` / `langchain-community` 或未配置 API Key 时，向量服务会报错；勿让 Chroma 在无自定义 embedding 时默默回落到外网下载默认模型（见 `vector_store.py` 中说明）。
+- **Web 搜索**：DuckDuckGo HTML 是非官方接口，适合演示与小流量；生产请换商业 API（Bing / Google CSE / Tavily 等）并注意合规与频控。
+- **行情 / 基本面**：使用东方财富 push2 接口，**免 API Key 但非签约数据**；可能遇到偶发限速，工具内置 1+2 次重试 + 指数退避；**不建议**用于高频交易决策。
+- **汇率**：open.er-api.com 约 24 小时刷新，宏观换算够用，**不实时**。
+- **Embedding / Rerank**：DashScope 公网 API；未配置 `DASHSCOPE_API_KEY` 时向量服务会报错（**不会**默默回退到 Chroma 默认 ONNX 模型，避免出现意料之外的英文小模型行为）。
+- **合规边界**：所有回答附"**仅基于公开信息整理，不构成投资建议**"；不做股价预测 / 买卖点判断 / 仓位建议。
+
+---
+
+## 简历项目段（可直接复制）
+
+```text
+FinSight · 中文投研助理 Agent（个人项目，2026.4 – 至今）
+技术栈：Python · LangChain · LangGraph · Streamlit · Chroma · Tongyi(Qwen) · DashScope Rerank
+
+- 设计基于 LangGraph ReAct 的工具编排：本地 RAG / Hybrid RAG / 实时行情 / 基本面 /
+  汇率换算 / 财务指标 / 交易日历，共 10 个 @tool，由 middleware 动态切换
+  「对话 / 报告」双模式系统提示词。
+- 自研结构化分块：识别中文章节（第 X 章 / 一二三 / Markdown #），配合
+  RecursiveCharacterTextSplitter 多级分隔符回退 + 父子块映射；30 题黄金集
+  评估 Recall@5 = 100%、MRR = 1.000。
+- 实现 Hybrid RAG：本地研报库 + DuckDuckGo Web 召回进入统一候选池，
+  Qwen3-Rerank 单次精排 + 0.25 阈值过滤 + 0.80 去重；将平均输入 token 从
+  947 降到 429（−54.7%），平均返回文档数 4.93 → 2.30，Precision@actual 88.1%。
+- 实现三策略上下文压缩器（extract / summarize / hybrid），按查询类型自动路由，
+  在 300 token 紧预算下可拿到最大单题压缩率 82.4%（extractive 策略）。
+- 实现「最近窗口 + 滚动摘要」两层长会话记忆，>20 轮对话 token 占用稳定。
+- 自研金融数据工具集：股票行情 / 基本面（东财 push2，免 Key，多市场 ticker
+  规范化 + 自动 NYSE 回退）+ 汇率（open.er-api.com，免 Key），冲烟测试 17/17 通过。
+- 自研投研主题 Streamlit 工作台：A 股涨跌色 + 模式徽章 + 知识库实时统计 +
+  示例提问引导 + 工具调用透明展开。
+- 自动化评估脚本：30 题黄金集 + 三档 pipeline 对照（Vector-only / +Rerank /
+  +Rerank+Compression）+ 多预算压缩力度模拟，单次端到端 ~270s。
+
+GitHub: github.com/<you>/finsight    Demo: <streamlit / HF link>
+```
 
 ---
 
 ## 相关文档
 
-- **上下文压缩完整指南**：`docs/context_compression_guide.md`（实现细节、配置说明、评估方法）
+- **整体改造计划与进度**：[`FINSIGHT_PLAN.md`](FINSIGHT_PLAN.md)
+- **数据采集指南**：[`data/README.md`](data/README.md)
+- **检索性能完整报告**：[`tests/eval_results.md`](tests/eval_results.md)（自动生成）
+- **上下文压缩完整指南**：`docs/context_compression_guide.md`
 - **Rerank Instruct 指南**：`docs/rerank_instruct_guide.md`
 - **Chunk 优化指南**：`docs/CHUNK_OPTIMIZATION.md`
-- **系统优化指南**：`docs/OPTIMIZATION.md`
+- **长会话记忆指南**：`docs/conversation_memory_guide.md`
 
 ---
 
-
+> 本项目为个人作品集 demo，不用于商业用途。所有回答仅基于公开信息整理，**不构成任何投资建议**。

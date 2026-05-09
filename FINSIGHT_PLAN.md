@@ -15,8 +15,8 @@
 | **额外 1** | 入库流水线增强 | ✅ **已落地** | 递归扫描子目录、`.md` 支持、非语料文件过滤 |
 | **额外 2** | 一键重建 + 冲烟脚本 | ✅ **已落地** | `scripts/rebuild_index.py` / `scripts/smoke_test_rag.py` |
 | **额外 3** | 前端财经主题改造 | ✅ **已落地** | 深蓝 + 金 + A 股涨跌色，hero 区一键示例提问，KB 统计实时显示 |
-| **P1-1** | 新增金融数据工具（行情 / 基本面 / 汇率） | ⏳ 待开始 | 让 demo 有"实时感" |
-| **P1-2** | 性能指标评估脚本（Recall@5 / 压缩率 / 延迟） | ⏳ 待开始 | 让简历填真实数字 |
+| **P1-1** | 新增金融数据工具（行情 / 基本面 / 汇率） | ✅ **已落地** | 3 个工具（东财 + ECB 公开免 Key），冲烟 17/17 通过 |
+| **P1-2** | 性能指标评估脚本（Recall@5 / 压缩率 / 延迟） | ✅ **已落地** | 30 题黄金集 + 三档对照；Recall@5=100%、MRR=1.000；Rerank 减输入 token 54.7% |
 | **A** | 接入真实研报 / 年报数据 | ⏳ 待开始 | 让 demo 跳出"科普级问答" |
 | **B** | 巨潮资讯批量下载脚本 | ⏳ 可选 | 自动化采集 |
 | **P2** | README 改造 / Demo 视频 / 公网部署 | ⏳ 待开始 | 锦上添花 |
@@ -112,27 +112,57 @@
 
 ### P1 · 提升可信度（1 ~ 2 天）
 
-#### ⏳ P1-1 新增金融数据工具（不依赖付费源）
+#### ✅ P1-1 新增金融数据工具（已落地）
 
 | 新工具 | 数据源 | 返回内容 |
 |---|---|---|
-| `get_stock_quote(ticker)` | 新浪财经 / 东财公开行情接口（免 Key） | 最新价、涨跌幅、成交量、时间戳 |
-| `get_stock_basics(ticker)` | 同上 | 名称、所属行业、市值、PE-TTM、PB |
-| `convert_currency(amount, from_ccy, to_ccy)` | ECB / exchangerate-api 公开端点 | 换算后金额 + 汇率 + 取值时间 |
+| `get_stock_quote(ticker)` | 东方财富 push2（公开免 Key） | 最新价、涨跌额、涨跌幅、今开/昨收/最高/最低、成交量、成交额、数据时点；emoji 涨跌指示 |
+| `get_stock_basics(ticker)` | 同上 | 总市值 / 流通市值（万亿/亿/万 自适应单位）、PE-TTM、PE-LYR、PB、换手率 |
+| `convert_currency(amount, from_ccy, to_ccy)` | open.er-api.com（基于 ECB 等公开汇率，免 Key） | 换算后金额 + 汇率 + 数据更新时间（UTC） |
 
-**实现位置**：新增 `tools/finance_tool.py`，再在 `tools/agent_tool.py` 的 `TOOLS` 中导入。
-**预计工时**：半天。
-**收益**：让 Demo 2 / Demo 3 真正打通"实时行情 + 基本面"。
+**实现要点**：
+- `_normalize_ticker` 统一解析 `600519` / `sh600519` / `1.600519` / `00700` / `HK00700` / `NVDA` / `105.NVDA` 等多种写法 → 东财 secid；
+- 美股 NASDAQ（`105.`）拿不到结果时**自动回退** NYSE（`106.`）；
+- HTTP helper 内置 1+2 次重试 + 指数退避（0.6s → 1.2s → 2.4s），有效缓解东财偶发抖动；
+- PE-LYR / 换手率为 0 时显示 `-`（避免误导，部分市场口径无静态 PE）。
 
-#### ⏳ P1-2 性能指标评估脚本
+**实现位置**：`tools/finance_tool.py`（300+ 行，含 helper / ticker 规范化 / 三个工具），在 `tools/agent_tool.py:TOOLS` 中注册。
+**冲烟测试**：`scripts/smoke_test_finance.py`，**17/17 全部通过**（含 A 股沪深、港股、美股 NASDAQ/NYSE、错误 ticker、错误币种、负数金额等 case）。
+**总工具数**：从 7 个升到 **10 个**。
 
-新增 `tests/test_retrieval_metrics.py`：
-- 自建 30~50 题黄金集（YAML：问题 → 应命中文档 ID 列表 / 应命中关键词）；
-- 跑「无 Rerank vs 有 Rerank」「无压缩 vs 有压缩」对比；
-- 输出 Recall@5 / Precision@3 / 平均压缩率 / 端到端延迟 P50&P95。
+#### ✅ P1-2 性能指标评估脚本（已落地）
 
-**预计工时**：1 天。
-**收益**：简历能填真实数字（替换"X%→Y%"占位）。
+**已完成**：
+- `tests/golden_set.yml`：30 题黄金集，覆盖 7 个类别（glossary / valuation / statements / industry_nev / industry_semi / industry_ai / demo_company），每题给定 `expected_docs` + `expected_keywords` 双判定；
+- `scripts/eval_retrieval_metrics.py`：三档 pipeline 对照（**Vector-only / +Rerank / +Rerank+Compression**），输出 markdown 报告 + 写盘到 `tests/eval_results.md`；
+- 偶发网络抖动（DashScope SSL EOF）自动重试 1 次；
+- 加入"压缩力度模拟"：用 `300 / 800 / 1500` token 预算重跑压缩器，证明压缩器在长输入下的能力。
+
+**实测数字（30 题，2026-05-09）**：
+
+| 指标 | Vector-only | +Rerank | +Rerank+Compression |
+|---|---|---|---|
+| **Recall@5** | **100%** | **100%** | **100%** |
+| **MRR** | **1.000** | **1.000** | **1.000** |
+| Precision@actual（实际分母） | 90.7% | **88.1%** | **88.1%** |
+| 平均返回文档数 | 4.93 | **2.30** | **2.30** |
+| **平均输入 tokens** | **947** | **429（−54.7%）** | **429（−54.7%）** |
+| 延迟 P50 (ms) | 2163 | 4521 | 4521 |
+| 延迟 P95 (ms) | 9293 | 15370 | 15370 |
+
+**压缩力度模拟**（在 reranked docs 上以不同 token 预算重跑压缩器）：
+
+| 预算 | 平均压缩率 | 最大压缩率 | 触发题数 |
+|---|---|---|---|
+| 1500 tokens | 0.0% | 0.0% | 0 / 30（全部不超阈值，正确选 none）|
+| 800 tokens | 0.0% | 0.0% | 0 / 30 |
+| 300 tokens | **12.3%** | **82.4%** | 6 / 30（触发 extractive 压缩）|
+
+**含义解读**：
+1. **Recall@5 与 MRR 在三档下均饱和**：当前语料结构清晰、章节切分到位，向量召回已经足够好；rerank 的真正价值不在 recall，而在**精度收紧 + 输入瘦身**。
+2. **Rerank 主要价值是"砍冗余"**：返回文档从 4.93 → 2.30，平均输入 token 从 947 → 429（**−54.7%**）；对应 LLM 推理成本预期同比下降 ~50%。
+3. **当前语料 reranked 后已经短到不需要压缩**：压缩器在 3500/1500/800 token 预算下统一选 none，**符合"按需压缩"原则**。压缩力度模拟显示在 300 tokens 紧预算下能拿到 82.4% 单题压缩率，证明压缩器本身能力在线，待真实长文档（如年报 PDF）接入后会真实激活。
+4. **延迟代价**：Rerank 增加 ~2.3s P50 / ~6s P95（DashScope rerank 公网 RPC，含两次 round-trip + 模型推理），生产可考虑批量 rerank / 缓存。
 
 ---
 
@@ -155,12 +185,15 @@
 **走线**：`rag_summarize` → 命中 `glossary/financial_terms.md` 章节 → 增强 Rerank Top-3 → 上下文压缩 → 子 LLM 摘要
 **讲点**：结构化分块识别"### 净资产收益率（ROE…）"标题 → Rerank 阈值过滤无关章节 → 上下文压缩节省 token
 
-### Demo 2 · Hybrid RAG + 报告模式（考点：工具编排）
-> [报告模式 ON] "帮我做一份 AI 算力产业链 2025 年的行业速评"（已可在当前数据集上跑通）
+### Demo 2 · Hybrid RAG + 报告模式 + 行情工具（考点：工具编排）
+> [报告模式 ON] "帮我做一份英伟达（NVDA）的个股速评，要带上最新行情"（P1-1 后已可跑通）
 
-**走线**：`hybrid_summarize`（本地 `industry_ai_computing.md` + Web 最新业绩 / 政策）→ 报告 prompt 输出"行业速评"结构（核心观点 / 产业链格局 / 近期催化 / 重点公司 / 风险）
-**讲点**：LangGraph middleware 在 `runtime.context["report"]` 动态切换 prompt；多源 Rerank 合并策略
-**接 P1-1 后增强**：补 `get_stock_quote` 拿头部公司最新价 → `compute_financial_metric` 算 PE。
+**走线**：`hybrid_summarize`（本地 `industry_ai_computing.md` + Web 最新新闻）
+→ `get_stock_quote("NVDA")` 拿最新价 + 涨跌
+→ `get_stock_basics("NVDA")` 拿市值 + PE-TTM + PB
+→ `convert_currency` 把 USD 市值换算 CNY（可选）
+→ 报告 prompt 输出"个股速评"结构（核心观点 / 最新动态 / 财务摘要 / 估值 / 风险）
+**讲点**：LangGraph middleware 在 `runtime.context["report"]` 动态切换 prompt；多源 Rerank 合并策略；ReAct 多步工具编排（一次问答触发 4~5 次工具调用）。
 
 ### Demo 3 · 长对话记忆（考点：工程深度）
 > 第 1 轮："看下半导体行业有哪些环节？"
@@ -171,17 +204,20 @@
 
 ---
 
-## 五、简历可写指标
+## 五、简历可写指标（已实测）
 
-| 指标 | 测量方式 | 当前状态 |
+| 指标 | 测量方式 | 实测值 |
 |---|---|---|
-| 检索 Recall@5 | 黄金集对比无/有 Rerank | ⏳ 待 P1-2 跑出 |
-| 检索 Precision@3 | 同上 | ⏳ 待 P1-2 跑出 |
-| 上下文压缩率 | 压缩前后 token 数（tiktoken） | ⏳ 待 P1-2 跑出 |
-| 端到端延迟 P50 / P95 | `tools/reactagent.py` 流式回调打点 | ⏳ 待 P1-2 跑出 |
-| Token 节省成本 | 同组测试题前后 token 总和 × 单价 | ⏳ 待 P1-2 跑出 |
-| 冲烟通过率（已有） | `scripts/smoke_test_rag.py` 7 题关键词命中 | ✅ **7/7 通过** |
-| Top-1 rerank 高分占比（已有） | 7 个查询的 Top-1 rerank ≥ 0.7 占比 | ✅ **6/7 ≥ 0.7**（最高 0.977）|
+| 检索 Recall@5 | 30 题黄金集 + 三档对照 | ✅ **100% (30/30)**，全 7 类别全命中 |
+| 检索 MRR | 同上 | ✅ **1.000**（命中均落 Top-1） |
+| Precision@actual | 同上，按实际返回文档数为分母 | ✅ **88.1%**（+Rerank） |
+| 输入 token 节省 | Rerank 前/后输入字符数对比 | ✅ **947 → 429，−54.7%** |
+| 平均返回文档数 | top-K 实际命中条数 | ✅ **4.93 → 2.30**（去冗余 53%）|
+| 端到端延迟 P50 / P95 | 三档对照 | ✅ **+Rerank P50 4.5s / P95 15.4s**；Vector-only P50 2.2s |
+| 上下文压缩最大单题率 | 在 300 token 紧预算下 | ✅ **82.4%**（extractive 策略） |
+| 冲烟通过率 RAG | `scripts/smoke_test_rag.py` 7 题关键词命中 | ✅ **7/7** |
+| 冲烟通过率 金融工具 | `scripts/smoke_test_finance.py` 17 用例 | ✅ **17/17** |
+| Top-1 rerank 高分占比 | 7 题中 Top-1 rerank ≥ 0.7 | ✅ **6/7**（最高 0.977）|
 
 ---
 
@@ -191,17 +227,25 @@
 FinSight · 中文投研助理 Agent（个人项目，2026.4 – 至今）
 技术栈：Python · LangChain · LangGraph · Streamlit · Chroma · Tongyi(Qwen) · DashScope Rerank
 
-- 设计基于 LangGraph ReAct 的工具编排：本地 RAG / Hybrid RAG / 行情 / 财务指标 /
-  交易日历，共 7 个 @tool，由 middleware 动态切换「对话 / 报告」双模式系统提示词。
+- 设计基于 LangGraph ReAct 的工具编排：本地 RAG / Hybrid RAG / 实时行情 / 基本面 /
+  汇率换算 / 财务指标 / 交易日历，共 10 个 @tool，由 middleware 动态切换
+  「对话 / 报告」双模式系统提示词。
 - 自研结构化分块：识别中文章节（第 X 章 / 一二三 / Markdown #），配合
-  RecursiveCharacterTextSplitter 多级分隔符回退；研报章节级 Recall@5 由 X% → Y%。
+  RecursiveCharacterTextSplitter 多级分隔符回退 + 父子块映射；30 题黄金集
+  评估 Recall@5 = 100%、MRR = 1.000。
 - 实现 Hybrid RAG：本地研报库 + DuckDuckGo Web 召回进入统一候选池，
-  Qwen3-Rerank 单次精排 + 阈值过滤 + 去重，避免双源加权偏置。
+  Qwen3-Rerank 单次精排 + 0.25 阈值过滤 + 0.80 去重；将平均输入 token 从
+  947 降到 429（−54.7%），平均返回文档数 4.93 → 2.30，Precision@actual 88.1%。
 - 实现三策略上下文压缩器（extract / summarize / hybrid），按查询类型自动路由，
-  平均输入 token 减少 ~XX%，单 query 成本下降 ~XX%。
+  在 300 token 紧预算下可拿到最大单题压缩率 82.4%（extractive 策略），
+  对超长输入按需启用，避免对短文档的过度压缩。
 - 实现「最近窗口 + 滚动摘要」两层长会话记忆，>20 轮对话 token 占用稳定。
-- 自研投研主题 Streamlit 工作台：A 股涨跌色 + 模式徽章 + 知识库统计 +
-  示例提问引导，端到端 demo 体验。
+- 自研金融数据工具集：股票行情 / 基本面（东财 push2，免 Key，多市场 ticker
+  规范化 + 自动 NYSE 回退）+ 汇率（open.er-api.com，免 Key），冲烟测试 17/17 通过。
+- 自研投研主题 Streamlit 工作台：A 股涨跌色 + 模式徽章 + 知识库实时统计 +
+  示例提问引导 + 工具调用透明展开，端到端 demo 体验。
+- 自动化评估脚本：30 题黄金集 + 三档 pipeline 对照（Vector-only / +Rerank /
+  +Rerank+Compression）+ 多预算压缩力度模拟，单次端到端 ~270s。
 
 GitHub: github.com/<you>/finsight    Demo: <streamlit / HF link>
 ```
@@ -214,19 +258,19 @@ GitHub: github.com/<you>/finsight    Demo: <streamlit / HF link>
 
 ### 主线 1 · 让 Demo 立得住（**强烈推荐先做**）
 
-| 顺序 | 任务 | 工时 | 收益 | 实现要点 |
-|---|---|---|---|---|
-| 1️⃣ | **P1-1 新增 `get_stock_quote` / `get_stock_basics`** | 半天 | demo 实时感拉满 | 用新浪财经 `hq.sinajs.cn` 公开行情接口（免 Key），加 ticker 规范化（300750 / SH601318 / NVDA 多种写法兼容） |
-| 2️⃣ | **接入 1~2 只真实标的的真实研报/年报**（A） | 半天 | 让 RAG 不再只是"科普级" | 从巨潮资讯网下 1~2 份年报 PDF（如宁德时代 300750 / 比亚迪 002594）放进 `data/company_filings/`，跑一次 `rebuild_index.py` |
-| 3️⃣ | **录一段 1 分钟 demo 视频**（P2） | 半天 | 简历点击率 +10x | 屏幕录制三连击用例：① ROE 杜邦拆解 ② AI 算力行业速评（报告模式）③ 长对话记忆 |
+| 顺序 | 任务 | 工时 | 收益 | 实现要点 | 状态 |
+|---|---|---|---|---|---|
+| 1️⃣ | **P1-1 新增 `get_stock_quote` / `get_stock_basics` / `convert_currency`** | 半天 | demo 实时感拉满 | 东财 push2 + open.er-api，多市场 ticker 规范化，重试退避 | ✅ **已落地** |
+| 2️⃣ | **接入 1~2 只真实标的的真实研报/年报**（A） | 半天 | 让 RAG 不再只是"科普级" | 从巨潮资讯网下 1~2 份年报 PDF（如宁德时代 300750 / 比亚迪 002594）放进 `data/company_filings/`，跑一次 `rebuild_index.py` | ⏳ 待开始 |
+| 3️⃣ | **录一段 1 分钟 demo 视频**（P2） | 半天 | 简历点击率 +10x | 屏幕录制三连击用例：① ROE 杜邦拆解 ② AI 算力行业速评（报告模式）③ 长对话记忆 + 实时行情 | ⏳ 待开始 |
 
 ### 主线 2 · 让简历有数字（与主线 1 解耦）
 
-| 顺序 | 任务 | 工时 | 收益 | 实现要点 |
-|---|---|---|---|---|
-| 1️⃣ | **P1-2 性能指标评估脚本** | 1 天 | 简历可写真实数字 | `tests/test_retrieval_metrics.py` + 黄金集 YAML（30 题已够用）；输出 Markdown 表格直接贴进 README |
-| 2️⃣ | **README 重写**（P2） | 半天 | GitHub 第一印象 | 在主 README 顶部加 FinSight 品牌、demo 截图、性能指标表格、一键启动命令 |
-| 3️⃣ | **公网部署**（Streamlit Cloud / HF Space） | 1 小时 | 简历可挂 demo 链接 | 注意 DASHSCOPE_API_KEY 用平台 secret 注入；Web 限制下 DuckDuckGo 可能受限，需做兜底 |
+| 顺序 | 任务 | 工时 | 收益 | 实现要点 | 状态 |
+|---|---|---|---|---|---|
+| 1️⃣ | **P1-2 性能指标评估脚本** | 1 天 | 简历可写真实数字 | 30 题黄金集 + 三档对照 + 压缩力度模拟，自动输出 markdown 报告 | ✅ **已落地** |
+| 2️⃣ | **README 重写**（P2） | 半天 | GitHub 第一印象 | 在主 README 顶部加 FinSight 品牌、demo 截图、性能指标表格、一键启动命令 | ⏳ 待开始 |
+| 3️⃣ | **公网部署**（Streamlit Cloud / HF Space） | 1 小时 | 简历可挂 demo 链接 | 注意 DASHSCOPE_API_KEY 用平台 secret 注入；Web 限制下 DuckDuckGo 可能受限，需做兜底 | ⏳ 待开始 |
 
 ### 不推荐立刻做（性价比较低）
 
@@ -268,11 +312,16 @@ GitHub: github.com/<you>/finsight    Demo: <streamlit / HF link>
 | `rag/vector_store.py` | `.md` 路由 + 非语料文件白名单 |
 | `config/chrome.yml` | 加 `.md` 后缀 |
 | `app.py` | 前端财经主题改造 |
-| `scripts/rebuild_index.py` | 新增 |
-| `scripts/smoke_test_rag.py` | 新增 |
+| `tools/finance_tool.py` | P1-1 新增（行情 / 基本面 / 汇率三个工具） |
+| `scripts/rebuild_index.py` | 新增（一键索引重建） |
+| `scripts/smoke_test_rag.py` | 新增（RAG 冲烟） |
+| `scripts/smoke_test_finance.py` | 新增（金融工具冲烟，17/17 通过） |
+| `tests/golden_set.yml` | P1-2 新增（30 题检索黄金集） |
+| `scripts/eval_retrieval_metrics.py` | P1-2 新增（三档对照 + 压缩力度模拟） |
+| `tests/eval_results.md` | P1-2 自动生成（评估报告，Recall@5=100%、Rerank 减输入 token 54.7%） |
 
 如确需改动"默认不动"清单中的文件，请单独评估并记录原因。
 
 ---
 
-_最后更新：2026-05-09 · 进度 6/11 任务已落地_
+_最后更新：2026-05-09 · 进度 8/11 任务已落地_

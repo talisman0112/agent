@@ -548,6 +548,17 @@ def hybrid_summarize(query: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# 金融数据工具（行情 / 基本面 / 汇率）—— 实现见 tools/finance_tool.py
+# ---------------------------------------------------------------------------
+
+from tools.finance_tool import (  # noqa: E402  保持依赖关系自下而上清晰
+    convert_currency,
+    get_stock_basics,
+    get_stock_quote,
+)
+
+
+# ---------------------------------------------------------------------------
 # 对外导出
 # ---------------------------------------------------------------------------
 
@@ -557,6 +568,9 @@ TOOLS = [
     hybrid_search,                # 多路召回（本地 + Web）：仅检索原文
     hybrid_summarize,             # 多路召回（本地 + Web）：检索 + 总结
     web_search,                   # 实时新闻 / 公告 / 行情评论
+    get_stock_quote,              # 行情快照（最新价 / 涨跌 / 成交）
+    get_stock_basics,             # 基本面快照（市值 / PE / PB / 换手率）
+    convert_currency,             # 货币换算（USD / CNY / HKD / EUR ...）
     compute_financial_metric,     # 财务指标 / 估值 / 同环比 等纯算术
     get_market_datetime,          # 市场时区当前时间（A 股 / 港股 / 美股）
 ]
@@ -572,6 +586,9 @@ __all__ = [
     "web_search",
     "compute_financial_metric",
     "get_market_datetime",
+    "get_stock_quote",
+    "get_stock_basics",
+    "convert_currency",
     # 保留以下函数定义但不参与默认工具路由（投研场景不相关，留作扩展）：
     "get_weather_by_location",
     "geocode_place",
