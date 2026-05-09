@@ -16,12 +16,15 @@ from __future__ import annotations
 
 import ast
 import json
+import logging
 import operator
 import re
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
+from typing import Callable, TypeVar
 from zoneinfo import ZoneInfo
 
 from langchain_core.tools import tool
@@ -31,6 +34,77 @@ from rag.ragsummarize import RAGSummarize, HybridRAG, _format_docs
 
 _rag = RAGSummarize()
 _hybrid_rag = HybridRAG()  # 多路召回 RAG 实例
+
+_logger = logging.getLogger("agent")
+
+
+# ---------------------------------------------------------------------------
+# LLM/Embedding 链路的网络瞬态错误重试 + 软兜底
+# ---------------------------------------------------------------------------
+#
+# 背景：DashScope（ChatTongyi / DashScopeEmbeddings）底层走 ``requests.Session``
+# 长连接，阿里云接入层对长时间空闲的 keep-alive 连接会单方面 RST，下一次复用时
+# OpenSSL 抛 ``[SSL: UNEXPECTED_EOF_WHILE_READING] _ssl.c:1006``。SDK 自身对该
+# 类异常**不重试**，因此需要在工具层兜一层：
+#   1. 命中网络/SSL 关键字 → 指数退避重试（0.8s / 1.6s / 3.2s）；
+#   2. 重试耗尽 → 退回检索原文，让 agent 仍能继续推理，而不是只看到一句
+#      "问答失败：..."。
+
+_NET_RETRY_KEYWORDS: tuple[str, ...] = (
+    "unexpected_eof",
+    "sslerror",
+    "ssl: ",
+    "max retries exceeded",
+    "connection aborted",
+    "connection reset",
+    "remote end closed",
+    "bad handshake",
+    "eof occurred",
+    "timed out",
+    "timeout",
+    "read timed out",
+)
+
+
+def _is_transient_network_error(err: BaseException) -> bool:
+    """判断异常是否为可重试的网络/SSL 类瞬态错误。"""
+    msg = str(err).lower()
+    return any(k in msg for k in _NET_RETRY_KEYWORDS)
+
+
+_T = TypeVar("_T")
+
+
+def _call_with_network_retry(
+    fn: Callable[[], _T],
+    *,
+    max_attempts: int = 3,
+    base_backoff: float = 0.8,
+    op_name: str = "llm_call",
+) -> _T:
+    """对依赖外部 LLM/Embedding 的调用做有限次网络重试。
+
+    - 仅对网络/SSL 类瞬态错误重试，其他异常立即抛出由上层处理；
+    - 单次失败成本 ≈ 当次 RTT；总等待上限 ≈ ``base_backoff * (2^max_attempts - 1)``；
+    - 失败 / 重试事件以 WARNING 级别写入 ``agent`` logger，便于线上巡检超时频率。
+    """
+    last_err: BaseException | None = None
+    for attempt in range(max_attempts):
+        try:
+            return fn()
+        except Exception as e:  # noqa: BLE001 - 这里需要捕获一切第三方栈错误
+            last_err = e
+            if attempt < max_attempts - 1 and _is_transient_network_error(e):
+                wait = base_backoff * (2 ** attempt)
+                _logger.warning(
+                    "[%s] 第 %d 次失败（瞬态网络错误），%.1fs 后重试: %s",
+                    op_name, attempt + 1, wait, e,
+                )
+                time.sleep(wait)
+                continue
+            raise
+    # 理论不可达：上面的 raise / return 已覆盖所有出口
+    raise last_err  # type: ignore[misc]
 
 
 # ---------------------------------------------------------------------------
@@ -60,7 +134,30 @@ def rag_summarize(query: str, dialogue_context: str = "") -> str:
     hint = (dialogue_context or "").strip()
     if hint:
         q = f"{q}\n\n【对话上下文（与检索查询一并交给模型理解，勿向用户逐字复述本标签）】\n{hint}"
-    return _rag.summarize(q)
+
+    try:
+        return _call_with_network_retry(
+            lambda: _rag.summarize(q),
+            op_name="rag_summarize",
+        )
+    except Exception as e:  # noqa: BLE001
+        if _is_transient_network_error(e):
+            _logger.warning(
+                "[rag_summarize] LLM 总结连续失败，退回本地检索原文兜底: %s", e,
+            )
+            try:
+                docs = _rag.retrieve_docs(q)
+                if docs:
+                    return (
+                        "（注意：LLM 总结服务暂不可用，已退回本地检索原文，"
+                        "请基于以下参考资料自行汇总作答）\n\n"
+                        + _format_docs(docs)
+                    )
+            except Exception as fb_err:  # noqa: BLE001
+                _logger.warning(
+                    "[rag_summarize] 兜底检索也失败: %s", fb_err,
+                )
+        return f"问答失败：{str(e)}"
 
 
 @tool(
@@ -542,8 +639,40 @@ def hybrid_summarize(query: str) -> str:
         return "提问为空，请提供具体问题。"
 
     try:
-        return _hybrid_rag.summarize(q)
-    except Exception as e:
+        return _call_with_network_retry(
+            lambda: _hybrid_rag.summarize(q),
+            op_name="hybrid_summarize",
+        )
+    except Exception as e:  # noqa: BLE001
+        # 软兜底：仅在瞬态网络错误时退回检索原文，避免吞掉真实的业务 bug
+        if _is_transient_network_error(e):
+            _logger.warning(
+                "[hybrid_summarize] LLM 总结连续失败，退回检索原文兜底: %s", e,
+            )
+            try:
+                docs = _hybrid_rag.retrieve_docs(q)
+                if docs:
+                    parts = []
+                    for i, doc in enumerate(docs, start=1):
+                        score = doc.metadata.get("rerank_score", 0.0)
+                        channel = doc.metadata.get("source_channel", "unknown")
+                        channel_label = "本地" if channel == "local" else "Web"
+                        source = doc.metadata.get("source", "")
+                        head = (
+                            f"参考{i} [{channel_label}] [相关性: {score:.3f}]"
+                        )
+                        if source:
+                            head += f"\n来源: {source}"
+                        parts.append(f"{head}\n{doc.page_content}")
+                    return (
+                        "（注意：LLM 总结服务暂不可用，已退回多路召回原文，"
+                        "请基于以下参考资料自行汇总作答）\n\n"
+                        + "\n\n".join(parts)
+                    )
+            except Exception as fb_err:  # noqa: BLE001
+                _logger.warning(
+                    "[hybrid_summarize] 兜底检索也失败: %s", fb_err,
+                )
         return f"问答失败：{str(e)}"
 
 
