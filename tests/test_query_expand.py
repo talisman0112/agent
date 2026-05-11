@@ -16,6 +16,13 @@ if str(_ROOT) not in sys.path:
 from rag import query_expand as qe
 
 
+@pytest.fixture(autouse=True)
+def _clear_query_expand_ui():
+    qe.clear_query_expand_ui_records()
+    yield
+    qe.clear_query_expand_ui_records()
+
+
 class _FakeLLM:
     def __init__(self, texts: list[str]) -> None:
         self._texts = list(texts)
@@ -127,3 +134,25 @@ def test_build_search_queries_decompose_path(monkeypatch: pytest.MonkeyPatch):
     assert q in qs
     assert "子问题A" in qs
     assert "子问题B" in qs
+
+
+def test_ui_force_off_overrides_config(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(qe.logger, "info", lambda *a, **k: None)
+    tok = qe.push_ui_query_expand_force_off()
+    try:
+        qs = qe.build_search_queries(
+            retrieval_input="宁德时代 产能",
+            cfg={
+                "query_expansion_enabled": True,
+                "query_expansion_variants": 5,
+                "query_expansion_include_original": True,
+                "query_decompose_enabled": False,
+            },
+            llm=_FakeLLM(['["应忽略"]']),
+        )
+        assert qs == ["宁德时代 产能"]
+        recs = qe.take_query_expand_ui_records()
+        assert len(recs) == 1
+        assert "工作台" in recs[0].remark
+    finally:
+        qe.reset_ui_query_expand_force_off(tok)

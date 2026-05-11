@@ -147,6 +147,8 @@ streamlit run app.py
          │              │ 执行工具                     │
          │              │ → ToolMessage               │
          │              │ → 主模型再推理 (ReAct 多步)  │
+         │              │ (rag/hybrid：本地侧可开      │
+         │              │  Query 扩展，见下节)         │
          │              └────────────┬─────────────────┘
          │                           │
          └────────────┬──────────────┘
@@ -157,17 +159,21 @@ streamlit run app.py
             └──────────────────────┘
 ```
 
+当工具为 `rag_summarize` / `rag_retrieve` / `hybrid_search` / `hybrid_summarize` 时，**本地 Chroma 检索**可在 `config/rag.yml` 中开启 Query 扩展（多检索用语合并粗排）；Agent 层 ReAct 编排**不变**，仍是「选工具 → 执行 → 再推理」。
+
 ### Hybrid RAG 数据流（本地 + Web 合并精排）
 
 `hybrid_summarize` / `hybrid_search` 内部把**两路召回合并到统一候选池**，**单次** Rerank 精排，避免双源加权偏置。
 
 ```
-┌─────────────────────┐     ┌─────────────────────┐
-│   Web 召回           │     │  本地向量检索         │
-│  DuckDuckGo HTML    │     │  Chroma top-K        │
-│  → Document(web)    │     │  → Document(local)   │
-└──────────┬──────────┘     └──────────┬──────────┘
-           │   同一 query 各自召回       │
+┌─────────────────────┐     ┌──────────────────────────────────┐
+│   Web 召回           │     │  本地向量检索                     │
+│  始终用**同一用户    │     │  可选 Query 扩展（rag.yml）：      │
+│  query**             │     │  LLM 生多条检索用语 → 并行各      │
+│  DuckDuckGo HTML     │     │  top-K → 合并 / 去重 / cap        │
+│  → Document(web)     │     │  → Document(local)               │
+└──────────┬──────────┘     └──────────┬───────────────────────┘
+           │   Web 一条 · 本地可多 query │
            └──────────────┬─────────────┘
                           ▼
                 ┌─────────────────────┐
@@ -177,6 +183,7 @@ streamlit run app.py
                            ▼
                 ┌─────────────────────┐
                 │  Qwen3-Rerank 精排   │
+                │  query = 用户原问    │
                 │  • 阈值过滤（≥0.25）│
                 │  • 去重（≥0.80）    │
                 │  • Instruct 引导     │
@@ -197,7 +204,7 @@ streamlit run app.py
             └──────────────────────────┘
 ```
 
-> 单路本地 RAG（`rag_summarize` / `rag_retrieve`）流程一致，只是合并池里只有 `Document(local)`，无 Web 一支。
+> 单路本地 RAG（`rag_summarize` / `rag_retrieve`）流程一致，只是合并池里只有 `Document(local)`，无 Web 一支。**本地向量检索**侧可配置多条 query 扩展（见下文「RAG 链路细节 → Query 扩展流程」）；Web 侧仍用原始用户 query。
 
 ### Demo 三连击（已可在内置数据集上跑通）
 
@@ -324,6 +331,66 @@ python mcp_server.py
 | `compression_enabled` | `true` | 是否启用上下文压缩 |
 | `compression_max_tokens` | 3500 | 压缩后目标 token 上限（短输入自动跳过）|
 | `compression_strategy` | `auto` | 压缩策略：`auto` / `extract` / `summarize` / `hybrid` |
+| `query_expansion_enabled` | `false` | 是否用 Chat 模型生成多条检索 query（广度） |
+| `query_expansion_variants` | 5 | LLM 生成的**额外**检索句式条数（不含原问） |
+| `query_expansion_include_original` | `true` | 多查询时是否始终保留用户原问参与向量检索 |
+| `query_expansion_max_coarse_docs` | 100 | 多路检索合并、去重后的子块上限，再父块展开与 Rerank |
+| `query_expansion_max_workers` | 8 | 并行向量检索线程数 |
+| `query_decompose_enabled` | `false` | 是否启用子问题分解（深度，需再命中触发词） |
+| `query_decompose_max_subqueries` | 4 | 分解后的子问题上限 |
+| `query_decompose_with_expansion` | `false` | 每个子问题是否再做多查询改写（延迟更高） |
+
+### Query 扩展流程（可选）
+
+检索前可扩展 **「送入向量库的 query 列表」**，不改变 **Rerank 与总结阶段所用的用户原问**（仍是一条字符串，含可选 `dialogue_context`）。实现见 [`rag/query_expand.py`](rag/query_expand.py)，在 [`rag/ragsummarize.py`](rag/ragsummarize.py) 的 `RAGSummarize._rerank_docs` 与 `HybridRAG._multi_retrieve`（**仅本地分支**）中接入。
+
+**开启前提**：`query_expansion_enabled` 或（分解路径）`query_decompose_enabled` 打开，且 **`chat_model` 可用**；否则退化为单条原问检索，不额外调用扩展 LLM。
+
+```
+                    ┌─────────────────────────┐
+  retrieval_input   │  build_search_queries()  │
+  （用户原问±上下文）│  + rerank_config        │
+                    └────────────┬────────────┘
+                                 │
+         ┌───────────────────────┼───────────────────────┐
+         │                       │                       │
+         ▼                       ▼                       ▼
+ 分解路径（深度）           多查询路径（广度）         关闭 / 无 LLM
+  • query_decompose_         • query_expansion_       • 仅 [原问]
+    enabled=true               enabled=true
+  • 问题含触发词               • LLM 输出 JSON 数组
+    （对比/优缺点/                  条检索短语
+     哪些方面…）              │
+  • LLM 拆子问题                   │
+         │                       │                       │
+         └───────────────────────┴───────────────────────┘
+                                 │
+                                 ▼
+                    ┌─────────────────────────┐
+                    │ coarse_retrieve_union() │
+                    │  多条 query 并行 invoke   │
+                    │  → 子块合并 → 去重 → cap  │
+                    └────────────┬────────────┘
+                                 │
+                                 ▼
+                    ┌─────────────────────────┐
+                    │ 父块展开（Parent-Child）   │
+                    └────────────┬────────────┘
+                                 │
+                                 ▼
+                    ┌─────────────────────────┐
+                    │ Rerank（query=原始原问）   │
+                    └────────────┬────────────┘
+                                 │
+                                 ▼
+                    ┌─────────────────────────┐
+                    │ 上下文压缩（按需）→ LLM 总结│
+                    └─────────────────────────┘
+```
+
+**Hybrid RAG**：Web 分支仍用**原始一条 query** 调用 DuckDuckGo，不把扩展后的多条 query 打到 Web，避免延迟与配额倍增。
+
+**与 LCEL 子链的关系**：`rag_summarize` 内部仍是 `context = _rerank_docs(输入)` + `question = Passthrough(同一输入)`；扩展只发生在 `_rerank_docs` 粗排内部，**不必**改链的形状。
 
 ### 上下文压缩策略
 
@@ -425,6 +492,7 @@ agent/
 │   ├── ingestion_clean.py          # 入库前正文清洗（YAML 可配）
 │   ├── structured_chunking.py      # 中文章节正则预分段
 │   ├── ragsummarize.py             # RAGSummarize + HybridRAG
+│   ├── query_expand.py             # 检索前多 query 扩展 / 子问题分解（可选）
 │   ├── reranker_enhanced.py        # 阈值过滤 + 去重 + Instruct
 │   ├── context_compressor.py       # 三策略上下文压缩
 │   └── parent_store.py             # 父块 SQLite 存储

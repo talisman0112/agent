@@ -1416,3 +1416,43 @@ ROE = 销售净利率 × 资产周转率 × 权益乘数
 2026-05-11 18:20:04,043 - agent - INFO - 多路召回总计: 4 条 (本地 2 + Web 2)
 2026-05-11 18:20:04,045 - agent - INFO - Rerank 结果: 3 条 (本地 1 + Web 2)
 2026-05-11 18:20:04,046 - agent - WARNING - query_expand: JSON 解析失败，截取内容: not json
+2026-05-11 19:17:08,347 - agent - WARNING - query_expand: JSON 解析失败，截取内容: not json
+2026-05-11 19:17:08,361 - agent - INFO - Web 搜索解析: 原始 2 条, 有效 2 条
+2026-05-11 19:17:08,363 - agent - INFO - 本地检索: 2 条
+2026-05-11 19:17:08,364 - agent - INFO - Web 搜索解析: 原始 2 条, 有效 2 条
+2026-05-11 19:17:08,364 - agent - INFO - Web 搜索: 2 条
+2026-05-11 19:17:08,364 - agent - INFO - 多路召回总计: 4 条 (本地 2 + Web 2)
+2026-05-11 19:17:08,368 - agent - INFO - 本地检索: 2 条
+2026-05-11 19:17:08,368 - agent - INFO - Web 搜索解析: 原始 2 条, 有效 2 条
+2026-05-11 19:17:08,369 - agent - INFO - Web 搜索: 2 条
+2026-05-11 19:17:08,369 - agent - INFO - 多路召回总计: 4 条 (本地 2 + Web 2)
+2026-05-11 19:17:08,369 - agent - INFO - Rerank 结果: 3 条 (本地 1 + Web 2)
+2026-05-11 19:17:20,050 - agent - WARNING - query_expand: JSON 解析失败，截取内容: not json
+2026-05-11 19:17:26,582 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-11 19:17:26,702 - agent - INFO - Text splitter: chunk_size=512 chunk_overlap=80 separators=9级
+2026-05-11 19:17:26,709 - agent - INFO - Parent-child：父块 SQLite C:\Users\lenovo\Desktop\rag\agent\db/parent_store.sqlite
+2026-05-11 19:17:26,710 - agent - INFO - 使用增强版 Reranker（阈值: 0.25, 去重: 0.80, 模式: qa, 自动: True）
+2026-05-11 19:17:26,710 - agent - INFO - 上下文压缩已启用（目标 Token: 3500, 策略: auto）
+2026-05-11 19:17:26,711 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-11 19:17:26,714 - agent - INFO - Text splitter: chunk_size=512 chunk_overlap=80 separators=9级
+2026-05-11 19:17:26,716 - agent - INFO - Parent-child：父块 SQLite C:\Users\lenovo\Desktop\rag\agent\db/parent_store.sqlite
+2026-05-11 19:17:26,716 - agent - INFO - 初始化 HybridRAG（Web: 5条, 本地: 15条, Rerank: Top-5, 阈值: 0.25, 压缩: 启用）
+2026-05-11 19:17:39,508 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-11 19:17:39,578 - agent - INFO - Text splitter: chunk_size=512 chunk_overlap=80 separators=9级
+2026-05-11 19:17:39,587 - agent - INFO - Parent-child：父块 SQLite C:\Users\lenovo\Desktop\rag\agent\db/parent_store.sqlite
+2026-05-11 19:17:39,591 - agent - INFO - 使用增强版 Reranker（阈值: 0.25, 去重: 0.80, 模式: qa, 自动: True）
+2026-05-11 19:17:39,593 - agent - INFO - 上下文压缩已启用（目标 Token: 3500, 策略: auto）
+2026-05-11 19:17:39,606 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-11 19:17:39,620 - agent - INFO - Text splitter: chunk_size=512 chunk_overlap=80 separators=9级
+2026-05-11 19:17:39,625 - agent - INFO - Parent-child：父块 SQLite C:\Users\lenovo\Desktop\rag\agent\db/parent_store.sqlite
+2026-05-11 19:17:39,626 - agent - INFO - 初始化 HybridRAG（Web: 5条, 本地: 15条, Rerank: Top-5, 阈值: 0.25, 压缩: 启用）
+2026-05-11 19:19:21,446 - agent - WARNING - query_expand: JSON 解析失败，截取内容: not json
+2026-05-11 19:23:23,512 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-11 19:23:23,527 - agent - INFO - Text splitter: chunk_size=512 chunk_overlap=80 separators=9级
+2026-05-11 19:23:23,534 - agent - INFO - Parent-child：父块 SQLite C:\Users\lenovo\Desktop\rag\agent\db/parent_store.sqlite
+2026-05-11 19:23:23,534 - agent - INFO - 使用增强版 Reranker（阈值: 0.25, 去重: 0.80, 模式: qa, 自动: True）
+2026-05-11 19:23:23,535 - agent - INFO - 上下文压缩已启用（目标 Token: 3500, 策略: auto）
+2026-05-11 19:23:23,539 - agent - INFO - Chroma 持久化路径: C:\Users\lenovo\Desktop\rag\agent\db/chroma
+2026-05-11 19:23:23,550 - agent - INFO - Text splitter: chunk_size=512 chunk_overlap=80 separators=9级
+2026-05-11 19:23:23,558 - agent - INFO - Parent-child：父块 SQLite C:\Users\lenovo\Desktop\rag\agent\db/parent_store.sqlite
+2026-05-11 19:23:23,559 - agent - INFO - 初始化 HybridRAG（Web: 5条, 本地: 15条, Rerank: Top-5, 阈值: 0.25, 压缩: 启用）

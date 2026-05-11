@@ -2,6 +2,7 @@ from langchain.agents import create_agent
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from model.model import chat_model
+from rag.query_expand import clear_query_expand_ui_records
 from tools.agent_tool import TOOLS
 from tools.mid_ware import middleware
 from utils.log import logger
@@ -105,6 +106,7 @@ class ReactAgent:
         3. 将 ``stream_mode`` 设为 ``\"updates\"`` 自行解析（本实现已合并 ``values`` + ``updates`` 并打点日志）。
         """
         self.last_tool_calls = []
+        clear_query_expand_ui_records()
         prev = ""
         prior = _conversation_history_to_messages(
             conversation_history or [],

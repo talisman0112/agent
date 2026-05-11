@@ -13,9 +13,14 @@ import streamlit as st
 
 from memory.conversation_memory import ConversationMemoryManager
 from model.model import chat_model
+from rag.query_expand import (
+    push_ui_query_expand_force_off,
+    reset_ui_query_expand_force_off,
+    take_query_expand_ui_records,
+)
 from tools.agent_tool import TOOLS
 from tools.reactagent import ReactAgent
-from utils.config_hander import agent_config, chroma_config
+from utils.config_hander import agent_config, chroma_config, rerank_config
 from utils.file_hander import get_file_md5
 from utils.path_pool import get_abs_path
 
@@ -352,6 +357,34 @@ with st.sidebar:
 
     st.divider()
 
+    # ----- Query 扩展（配置说明，与 rag.yml 同步） -----
+    qe_on = bool(rerank_config.get("query_expansion_enabled", False))
+    qd_on = bool(rerank_config.get("query_decompose_enabled", False))
+    qm_on = bool(rerank_config.get("query_decompose_with_expansion", False))
+    with st.expander("🔍 Query 扩展（本地检索）", expanded=False):
+        st.toggle(
+            "使用 Query 扩展（本地检索）",
+            key="query_expand_user_enabled",
+            help=(
+                "关闭后：即使 `config/rag.yml` 已开启扩写，本轮对话触发的本地检索也**只用单条原问**，"
+                "不调用多查询/分解 LLM。开启时以配置文件为准。"
+            ),
+        )
+        st.markdown(
+            f"| 项 | 状态 |\n| --- | --- |\n"
+            f"| 广度 · 多查询改写（`query_expansion_enabled`） | {'✅ 开启' if qe_on else '❌ 关闭'} |\n"
+            f"| 深度 · 子问题分解（`query_decompose_enabled`） | {'✅ 开启' if qd_on else '❌ 关闭'} |\n"
+            f"| 分解后再多查询（`query_decompose_with_expansion`） | {'✅ 开启' if qm_on else '❌ 关闭'} |\n"
+        )
+        st.caption(
+            "仅作用于 **本地 Chroma 粗排**：可多条检索用语并行召回后合并去重；"
+            "**Rerank 与最终总结仍使用用户原问**（含可选对话上下文）。"
+            " **Hybrid 工具**下 Web 搜索仍只发 **一条原问**，不随扩展倍增。"
+            " 上方开关可临时覆盖配置文件；修改 `config/rag.yml` 后请**重启** Streamlit。"
+        )
+
+    st.divider()
+
     # ----- 可用工具 -----
     with st.expander(f"🛠️ 可用工具（{len(TOOLS)} 个）", expanded=False):
         for t in TOOLS:
@@ -478,6 +511,8 @@ memory_manager = ConversationMemoryManager(
 )
 if "conversation_summary" not in st.session_state:
     st.session_state.conversation_summary = memory_manager.init_summary_state()
+if "query_expand_user_enabled" not in st.session_state:
+    st.session_state.query_expand_user_enabled = True
 
 
 # ---------------------------------------------------------------------------
@@ -567,14 +602,21 @@ if prompt:
                     st.session_state.conversation_summary = memory_manager.update_summary(
                         history, summary_state
                     )
-                stream = st.session_state.agent.execute(
-                    prompt,
-                    conversation_history=history,
-                    short_term_turns=memory_manager.recent_turns,
-                    memory_summary=st.session_state.conversation_summary.get("summary_text", ""),
-                    report_mode=report_mode,
-                )
-                full = st.write_stream(stream)
+                expand_off_token = None
+                if not st.session_state.get("query_expand_user_enabled", True):
+                    expand_off_token = push_ui_query_expand_force_off()
+                try:
+                    stream = st.session_state.agent.execute(
+                        prompt,
+                        conversation_history=history,
+                        short_term_turns=memory_manager.recent_turns,
+                        memory_summary=st.session_state.conversation_summary.get("summary_text", ""),
+                        report_mode=report_mode,
+                    )
+                    full = st.write_stream(stream)
+                finally:
+                    if expand_off_token is not None:
+                        reset_ui_query_expand_force_off(expand_off_token)
                 calls = getattr(st.session_state.agent, "last_tool_calls", None) or []
                 if calls:
                     with st.expander(
@@ -587,6 +629,23 @@ if prompt:
                             )
                             st.caption("工具返回（摘录）")
                             st.code(c.get("content_preview", ""), language=None)
+                qx_records = take_query_expand_ui_records()
+                if qx_records:
+                    with st.expander(
+                        f"🔍 Query 扩展详情（本地检索 {len(qx_records)} 次）",
+                        expanded=False,
+                    ):
+                        for i, rec in enumerate(qx_records, start=1):
+                            st.markdown(f"**{i}. {rec.path_label}** · `{rec.path_key}`")
+                            st.caption(rec.remark)
+                            st.markdown("**检索输入（摘要）**")
+                            st.code(rec.input_preview, language=None)
+                            st.markdown(
+                                f"**参与向量检索的用语（{len(rec.search_queries)} 条）**"
+                            )
+                            for j, sq in enumerate(rec.search_queries, 1):
+                                disp = sq if len(sq) <= 400 else sq[:399] + "…"
+                                st.text(f"{j}. {disp}")
                 assistant_reply = full if isinstance(full, str) else "".join(full)
             except Exception as e:
                 error_msg = str(e).lower()

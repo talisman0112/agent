@@ -5,16 +5,104 @@
 
 from __future__ import annotations
 
+import contextvars
 import hashlib
 import json
 import re
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from typing import Any
 
 from langchain_core.documents import Document
 from langchain_core.messages import HumanMessage
 
 from utils.log import logger
+
+# ---------------------------------------------------------------------------
+# Streamlit 工作台：用户可临时关闭扩展（不修改 rag.yml），仅当前请求上下文生效
+# ---------------------------------------------------------------------------
+
+_FORCE_UI_EXPAND_OFF: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "_FORCE_UI_EXPAND_OFF",
+    default=False,
+)
+
+
+def push_ui_query_expand_force_off() -> contextvars.Token:
+    """工作台关闭扩展时调用；返回 reset 用 token（须在 finally 中 reset）。"""
+    return _FORCE_UI_EXPAND_OFF.set(True)
+
+
+def reset_ui_query_expand_force_off(token: contextvars.Token) -> None:
+    _FORCE_UI_EXPAND_OFF.reset(token)
+
+
+def _ui_forced_expand_off() -> bool:
+    return _FORCE_UI_EXPAND_OFF.get() is True
+
+
+# ---------------------------------------------------------------------------
+# 供 Streamlit 等前端展示：本轮检索生成的 query 列表（多工具调用可多条）
+# ---------------------------------------------------------------------------
+
+@dataclass
+class QueryExpandUiRecord:
+    """单次 build_search_queries 的摘要，供界面展示。"""
+
+    path_key: str
+    path_label: str
+    input_preview: str
+    search_queries: list[str]
+    remark: str
+
+
+_UI_RECORDS: list[QueryExpandUiRecord] = []
+
+
+def clear_query_expand_ui_records() -> None:
+    """新一轮用户提问前清空（避免串条）。"""
+    _UI_RECORDS.clear()
+
+
+def take_query_expand_ui_records() -> list[QueryExpandUiRecord]:
+    """取出并清空队列，供助手回复完成后展示。"""
+    out = list(_UI_RECORDS)
+    _UI_RECORDS.clear()
+    return out
+
+
+def _preview_text(text: str, limit: int = 160) -> str:
+    t = (text or "").strip().replace("\n", " ")
+    if len(t) <= limit:
+        return t
+    return t[: limit - 1] + "…"
+
+
+def _append_ui_record(
+    *,
+    path_key: str,
+    path_label: str,
+    retrieval_input: str,
+    search_queries: list[str],
+    remark: str,
+) -> None:
+    _UI_RECORDS.append(
+        QueryExpandUiRecord(
+            path_key=path_key,
+            path_label=path_label,
+            input_preview=_preview_text(retrieval_input),
+            search_queries=list(search_queries),
+            remark=remark,
+        )
+    )
+
+
+_PATH_LABELS = {
+    "decompose": "深度 · 子问题分解",
+    "decompose_multi": "深度 · 分解 + 每子问多查询",
+    "multi_query": "广度 · 多查询改写",
+    "single": "未扩展（单条检索）",
+}
 
 _VARIANT_PROMPT = """你是投研语料检索助手。用户问题将用于向量检索（研报/财报/公告/政策等）。
 请基于下方「检索输入」，生成 {n:d} 条**互不重复**的检索短语或短句，用于提高召回覆盖面。
@@ -251,6 +339,19 @@ def build_search_queries(
     if not q0:
         return []
 
+    if _ui_forced_expand_off():
+        _append_ui_record(
+            path_key="single",
+            path_label=_PATH_LABELS["single"],
+            retrieval_input=q0,
+            search_queries=[q0],
+            remark=(
+                "工作台 **已关闭**「使用 Query 扩展」：本轮强制单条原问检索，"
+                "不调用多查询/分解 LLM（覆盖 `config/rag.yml` 中的扩展开关）。"
+            ),
+        )
+        return [q0]
+
     exp_enabled = cfg.get("query_expansion_enabled", False)
     n_variants = cfg.get("query_expansion_variants", 5)
     include_orig = cfg.get("query_expansion_include_original", True)
@@ -272,7 +373,29 @@ def build_search_queries(
                 extra = llm_generate_query_variants(llm, c, n_variants=int(n_variants))
                 merged_one = ([] if not include_orig else [c]) + extra
                 aggregated.extend(_dedupe_queries_preserve(merged_one))
-            return _dedupe_queries_preserve(aggregated)
+            final = _dedupe_queries_preserve(aggregated)
+            _append_ui_record(
+                path_key="decompose_multi",
+                path_label=_PATH_LABELS["decompose_multi"],
+                retrieval_input=q0,
+                search_queries=final,
+                remark=(
+                    "已命中深度触发词，且开启「分解 + 每子问多查询」："
+                    "对每个子问再生成检索变体后合并；仅作用于本地 Chroma；"
+                    "Hybrid 时 Web 仍用原问一条；Rerank/总结仍用原问。"
+                ),
+            )
+            return final
+        _append_ui_record(
+            path_key="decompose",
+            path_label=_PATH_LABELS["decompose"],
+            retrieval_input=q0,
+            search_queries=cores,
+            remark=(
+                "已命中深度触发词：LLM 拆成多条子问题并与原问合并后并行向量检索；"
+                "Hybrid 时 Web 仍只使用原问；Rerank/总结仍用原问。"
+            ),
+        )
         return cores
 
     if exp_enabled and llm is not None:
@@ -284,6 +407,35 @@ def build_search_queries(
             len(extra),
             len(uniq),
         )
-        return uniq if uniq else [q0]
+        out_q = uniq if uniq else [q0]
+        _append_ui_record(
+            path_key="multi_query",
+            path_label=_PATH_LABELS["multi_query"],
+            retrieval_input=q0,
+            search_queries=out_q,
+            remark=(
+                f"广度：在检索输入基础上由 LLM 最多再生成 {n_variants} 条用语，"
+                f"合并后共 {len(out_q)} 条并行查库；Rerank/总结仍针对原问。"
+            ),
+        )
+        return out_q
 
+    parts: list[str] = []
+    if not exp_enabled:
+        parts.append("「广度」未开启（`query_expansion_enabled`）")
+    if llm is None:
+        parts.append("对话模型不可用，无法调用扩写 LLM")
+    if deco_enabled and llm is not None and not should_decompose_for_depth(q0):
+        parts.append("已开「深度」但未命中触发词（对比/优缺点/哪些方面等）")
+    remark = "本次仅使用单条原问做向量粗排（未走多检索用语扩写）。"
+    if parts:
+        remark += " " + "；".join(parts) + "。可在 `config/rag.yml` 调整。"
+
+    _append_ui_record(
+        path_key="single",
+        path_label=_PATH_LABELS["single"],
+        retrieval_input=q0,
+        search_queries=[q0],
+        remark=remark,
+    )
     return [q0]
