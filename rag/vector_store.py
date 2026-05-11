@@ -28,6 +28,7 @@ from utils.file_hander import (
 from utils.log import logger
 from utils.path_pool import get_abs_path
 
+from rag.ingestion_clean import clean_documents, resolve_ingestion_clean_config
 from rag.parent_store import ParentChunkStore, expand_child_hits_to_parents
 from rag.structured_chunking import (
     prepend_section_title_to_chunks,
@@ -148,6 +149,8 @@ class VectorStoreService:
     def load_data(self) -> None:
         """读取 `database_path` 下允许后缀的文件，分块并写入 Chroma。
 
+        每条文件在 Loader 之后、结构化分块之前会经 ``ingestion_clean`` 清洗正文
+        （见 ``config/chrome.yml`` 中 ``ingestion_clean``，`enabled: false` 则跳过）。
         `md5_path` 记录已成功入库的文件内容 MD5；内容不变的文件下次运行会跳过。
         """
         data_dir = get_abs_path(chroma_config["database_path"])
@@ -174,6 +177,11 @@ class VectorStoreService:
             with open(md5_path, "a", encoding="utf-8") as f:
                 f.write(digest + "\n")
 
+        ingestion_clean_cfg = resolve_ingestion_clean_config(chroma_config)
+        logger.info(
+            "ingestion_clean: enabled=%s (see config/chrome.yml ingestion_clean)",
+            ingestion_clean_cfg.get("enabled", True),
+        )
         paths = listdir_with_allowed_type(data_dir, allowed)
         for file_path in paths:
             if _is_non_corpus_file(file_path):
@@ -187,6 +195,10 @@ class VectorStoreService:
                 document = _documents_from_file(file_path)
                 if not document:
                     logger.error("No documents loaded: %s", file_path)
+                    continue
+                document = clean_documents(document, ingestion_clean_cfg, source_hint=file_path)
+                if not document:
+                    logger.error("No documents left after ingestion_clean: %s", file_path)
                     continue
                 if chroma_config.get("structured_chunking_enabled", True):
                     document = split_documents_by_sections(document)

@@ -15,6 +15,7 @@ from langchain_core.prompts import PromptTemplate
 
 # 上下文压缩模块
 from rag.context_compressor import ContextCompressor, CompressionStrategy, format_compressed_docs
+from rag.query_expand import build_search_queries, coarse_retrieve_union
 
 def _format_docs(docs: list[Document]) -> str:
     parts = []
@@ -131,8 +132,19 @@ class RAGSummarize:
 
     def _rerank_docs(self, query: str) -> list[Document]:
         """增强版检索流程：向量检索 → Rerank 精排 → 上下文压缩（可选）"""
-        # 1. 向量检索（粗排）
-        coarse_docs = self.rag_retriever.invoke(query)
+        # 1. 向量检索（粗排）；可选多 query 合并后再父块展开
+        cfg_q = rerank_config
+        search_queries = build_search_queries(
+            retrieval_input=query,
+            cfg=cfg_q,
+            llm=getattr(self, "rag_model", None),
+        )
+        coarse_docs = coarse_retrieve_union(
+            self.rag_retriever,
+            search_queries,
+            max_coarse_docs=cfg_q.get("query_expansion_max_coarse_docs", 100),
+            max_workers=cfg_q.get("query_expansion_max_workers", 8),
+        )
         coarse_docs = self.vector_store.expand_retrieval_to_parents(coarse_docs)
         if not coarse_docs:
             return []
@@ -337,9 +349,20 @@ class HybridRAG:
         local_docs: List[Document] = []
         web_docs: List[Document] = []
 
-        # 1. 本地向量库检索
+        # 1. 本地向量库检索（可选 Query 扩展，仅扩展本地召回；Web 仍用原始 query）
         try:
-            local_docs = self.rag_retriever.invoke(query)
+            cfg_q = rerank_config
+            search_queries = build_search_queries(
+                retrieval_input=query,
+                cfg=cfg_q,
+                llm=getattr(self, "rag_model", None),
+            )
+            local_docs = coarse_retrieve_union(
+                self.rag_retriever,
+                search_queries,
+                max_coarse_docs=cfg_q.get("query_expansion_max_coarse_docs", 100),
+                max_workers=cfg_q.get("query_expansion_max_workers", 8),
+            )
             local_docs = self.vector_store.expand_retrieval_to_parents(local_docs)
             for doc in local_docs:
                 md = dict(doc.metadata) if doc.metadata else {}

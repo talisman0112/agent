@@ -54,3 +54,18 @@ structured_chunk_prepend_section: true
 parent_child_enabled: true
 # 父块存储路径（相对项目根）；全量重建索引时可一并删除该文件
 parent_store_sqlite: db/parent_store.sqlite
+
+# 入库正文清洗（Loader 之后、结构化分块之前）；不改磁盘源文件，仅影响向量内容与 metadata.ingestion_cleaned
+ingestion_clean:
+  enabled: true
+  unicode_form: NFKC
+  max_consecutive_blank_lines: 2
+  strip_lines: true
+  drop_empty_documents: true
+  min_document_chars: 20
+  # 阶段 B（可选）：整行匹配的 regex 列表（对 strip 后的行 fullmatch）；默认空，可在语料.preview 调试后再打开
+  drop_line_patterns: []
+  collapse_duplicate_lines: false
+  collapse_duplicate_max_line_len: 80
+  collapse_duplicate_min_repeats: 2
+  merge_soft_hyphens: false

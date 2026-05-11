@@ -15,6 +15,11 @@ if str(ROOT) not in sys.path:
 from rag.ragsummarize import HybridRAG
 
 
+class _PassThroughVectorStore:
+    def expand_retrieval_to_parents(self, docs):  # noqa: ANN001
+        return list(docs)
+
+
 class _DummyRetriever:
     """模拟本地向量检索器。"""
 
@@ -71,6 +76,8 @@ def test_parse_web_results_to_documents():
 
 def test_multi_retrieve_merges_web_and_local(monkeypatch):
     hybrid = HybridRAG.__new__(HybridRAG)
+    hybrid.rag_model = None
+    hybrid.vector_store = _PassThroughVectorStore()
     hybrid.web_max_results = 2
     hybrid.rag_retriever = _DummyRetriever(
         [
@@ -100,6 +107,10 @@ def test_multi_retrieve_merges_web_and_local(monkeypatch):
 
 def test_rerank_docs_uses_combined_candidates(monkeypatch):
     hybrid = HybridRAG.__new__(HybridRAG)
+    hybrid.rag_model = None
+    hybrid.vector_store = _PassThroughVectorStore()
+    hybrid.compression_enabled = False
+    hybrid.compressor = None
     hybrid.web_max_results = 2
     hybrid.rag_retriever = _DummyRetriever(
         [

@@ -58,4 +58,21 @@ rerank_config = {
     "compression_use_llm": rag_config.get("compression_use_llm", False),
     "compression_quality_threshold": rag_config.get("compression_quality_threshold", 0.7),
     "compression_strategy": rag_config.get("compression_strategy", "auto"),
+    # Query 扩展（多查询 / 分解）
+    "query_expansion_enabled": rag_config.get("query_expansion_enabled", False),
+    "query_expansion_variants": rag_config.get("query_expansion_variants", 5),
+    "query_expansion_include_original": rag_config.get(
+        "query_expansion_include_original", True
+    ),
+    "query_expansion_max_coarse_docs": rag_config.get(
+        "query_expansion_max_coarse_docs", 100
+    ),
+    "query_expansion_max_workers": rag_config.get("query_expansion_max_workers", 8),
+    "query_decompose_enabled": rag_config.get("query_decompose_enabled", False),
+    "query_decompose_max_subqueries": rag_config.get(
+        "query_decompose_max_subqueries", 4
+    ),
+    "query_decompose_with_expansion": rag_config.get(
+        "query_decompose_with_expansion", False
+    ),
 }

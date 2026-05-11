@@ -6,3 +6,31 @@ ps：但是过长对话还是会丢细节，词义变异。。。。。
 
 5.9 确定业务层面目标（金融分析领域），确认复用架构，进行prompt的重写，本地数据的重新清洗和上传，新增工具get_stock_quote（事实快照），get_stock_basics（基本面快照），convert_currency（事实货币金额换算）。新增冒烟测试，确定了小范围在agent正常运行逻辑。目前定位为一个报告形的财经助理
 进一步优化了get_stock_quote在调用url的稳定性，加一层进程内 TTL 缓存（30 秒）减少抖动
+
+5.11 实现了mcp架构，由于是本机开发的demo，用官方的mcp python sdk并通过stdio通信。
+stdio：
+MCP Server 和 MCP Client 运行在同一个进程内，通过标准输入（stdin）和标准输出（stdout） 来读写消息。
+数据流向：客户端往 stdin 写请求，服务器从 stdin 读取；服务器往 stdout 写响应，客户端从 stdout 读取。
+消息格式：每一条 JSON-RPC 消息前后各加一个 \n 换行符，成为一行一行的纯文本流。
+| 优点 | 缺点 |
+|------|------|
+| **零配置**：无需网络端口，无需防火墙，无需认证。 | **只能本地使用**：Client 和 Server 必须在同一台机器，同一进程。 |
+| **性能极好**：纯内存管道，无网络延迟，低开销。 | **无法通过 HTTP 暴露**：你无法让远程客户端调用该 Server。 |
+| **调试方便**：可以直接在终端跑 `python server.py` 查看日志。 | **一个 Server 只能服务一个 Client**（因为 stdin/stdout 是单向并独占的）。 |
+
+具体工作流程：
+Host/Client                          MCP Server 
+    |                                       |
+    |-------------- 初始化握手 ------------>|
+    |<----------- 能力声明 ---------------|
+    |                                       |
+    |---- list_tools (工具发现) --------->| 返回 Tool 列表
+    |<--- [rag_summarize, web_search..]    |
+    |                                       |
+    |---- call_tool (hybrid_summarize) -->| 调用 _run_hybrid_summarize
+    |                                       | -> hybrid_summarize.invoke(...)
+    |<-- "根据知识库和网络信息..." ----| 返回文本
+    |                                       |
+    | LLM 加工结果后生成最终回复           |
+
+    实现rag搜索之后入库加入缓存，并提前对数据进行清洗

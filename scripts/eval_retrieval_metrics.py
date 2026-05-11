@@ -20,6 +20,11 @@
     python scripts/eval_retrieval_metrics.py --limit 10         # 调试模式仅跑前 10
     python scripts/eval_retrieval_metrics.py --output report.md # 自定义报告路径
 
+Query 扩展对照
+-------------
+在 ``config/rag.yml`` 中切换 ``query_expansion_enabled`` / ``query_expansion_max_coarse_docs`` 等，
+可对比多查询合并粗排与单路检索的 Recall@5/MRR（评测走真实 ``RAGSummarize.retrieve_docs``）。
+
 判定命中规则
 -----------
 对每条 expected_docs 中的 basename 进行**匹配优先**判定：

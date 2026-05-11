@@ -6,6 +6,8 @@
 # 环境变量见项目根目录 ENV.example
 
 streamlit==1.56.0
+# MCP stdio server（mcp_server.py / mcp_impl）
+mcp>=1.27.0
 langchain==1.2.15
 langchain-core==1.3.0
 langchain-classic==1.0.4

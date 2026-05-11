@@ -66,3 +66,22 @@ hybrid_rerank_top_n: 5
 # 用于指导 Reranker 如何处理来自不同源的文档
 # 示例: "Retrieve relevant passages from both web search and local documents."
 # hybrid_custom_instruct:
+
+# --- Query 扩展：广度（多查询改写）与深度（子问题分解）---
+# query_expansion_enabled: 是否用 LLM 生成多条检索 query，合并粗排后统一 Rerank（用户原问仍为 Rerank 主 query）
+query_expansion_enabled: false
+# query_expansion_variants: LLM 生成的额外检索句式条数（不含原问；总检索条数≈variants+1）
+query_expansion_variants: 5
+# query_expansion_include_original: 是否始终保留用户原问参与检索（建议 true）
+query_expansion_include_original: true
+# query_expansion_max_coarse_docs: 多路合并去重后的子块/命中上限，再交给父块展开与 Rerank
+query_expansion_max_coarse_docs: 100
+# query_expansion_max_workers: 并行向量检索线程数
+query_expansion_max_workers: 8
+
+# query_decompose_enabled: 是否启用子问题分解（适合对比、多方面、影响因素等复合问）
+query_decompose_enabled: false
+# query_decompose_max_subqueries: 分解后的子问题上限（不含自动并入的原问）
+query_decompose_max_subqueries: 4
+# query_decompose_with_expansion: 每个子问题是否再做多查询改写（延迟更高，默认关）
+query_decompose_with_expansion: false
