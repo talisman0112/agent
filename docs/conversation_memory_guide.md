@@ -781,19 +781,19 @@ class ConversationMemoryManager:
 
 ### 第一阶段必做
 
-- [ ] 新增 `memory/conversation_memory.py`
-- [ ] 在 `app.py` 中新增 `conversation_summary`
-- [ ] 在 `app.py` 中新增 `memory_facts`
-- [ ] 在请求前接入 `should_compact()`
-- [ ] 在请求前接入 `update_summary()`
-- [ ] 在消息发送前拼接 summary + recent window
+- [x] 新增 `memory/conversation_memory.py`
+- [x] 在 `app.py` 中新增 `conversation_summary`
+- [x] 在 `app.py` 中新增 `memory_facts`
+- [x] 在请求前接入 `should_compact()`
+- [x] 在请求前接入 `update_summary()`
+- [x] 在消息发送前拼接 summary + recent window
 
 ### 第二阶段建议做
 
-- [ ] 实现 `extract_facts()`
-- [ ] 将结构化记忆加入模型输入
-- [ ] 增加基础单元测试
-- [ ] 增加多轮连续性测试
+- [x] 实现 `extract_facts()`（摘要更新时调用，输出 JSON 合并进 `memory_facts`）
+- [x] 将结构化记忆加入模型输入（`ReactAgent.execute(memory_facts_text=...)`，顺序：facts → 摘要 → 最近窗口 → 当前问）
+- [x] 增加基础单元测试（`tests/test_conversation_memory.py`）
+- [ ] 增加多轮连续性测试（可选，脚本/人工评测）
 
 ### 第三阶段可选
 

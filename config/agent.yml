@@ -29,3 +29,11 @@ conversation_max_history_tokens_before_summary: 5000
 
 # 单条历史摘要的最大字符数
 conversation_summary_max_chars: 1200
+
+# ==================== 长对话记忆 Phase 2：结构化事实 ====================
+
+# 是否在滚动摘要更新时抽取并维护结构化长期记忆
+conversation_memory_facts_enabled: true
+
+# 注入模型的结构化记忆文本最大字符数
+conversation_memory_facts_max_chars: 800

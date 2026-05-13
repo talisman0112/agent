@@ -19,6 +19,9 @@ md5_path: md5.txt
 allow_knowledge_file_types:
   - ".txt"
   - ".md"
+  - ".csv"
+  - ".json"
+  - ".jsonl"
   - ".pdf"
   - ".docx"
   - ".doc"

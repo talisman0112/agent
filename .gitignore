@@ -5,3 +5,6 @@ __pycache__/
 *.pyc
 .Python
 .streamlit/
+
+# 知识库语料与下载数据（体积大、机器本地）
+/data/

@@ -98,3 +98,59 @@ def test_execute_includes_memory_summary_before_recent_history():
         assert messages[2].content == "second a"
         assert messages[3].content == "third"
 
+
+def test_execute_memory_facts_before_summary():
+    """结构化长期记忆应插在滚动摘要之前。"""
+
+    def fake_init(self):
+        self.last_tool_calls = []
+        mock_graph = MagicMock()
+        mock_graph.stream.return_value = iter([])
+        self.agent = mock_graph
+
+    import tools.reactagent as reactagent_mod
+
+    with patch.object(reactagent_mod.ReactAgent, "__init__", fake_init):
+        agent = reactagent_mod.ReactAgent()
+        list(
+            agent.execute(
+                "current",
+                conversation_history=[],
+                short_term_turns=20,
+                memory_facts_text="【长期记忆】\n- 目标：测试",
+                memory_summary="- 较早摘要要点",
+                log_tool_calls=False,
+            )
+        )
+
+        payload = agent.agent.stream.call_args[0][0]
+        messages = payload["messages"]
+        assert len(messages) == 3
+        assert "长期记忆" in messages[0].content
+        assert "历史摘要" in messages[1].content
+        assert messages[2].content == "current"
+
+
+def test_extract_facts_merges_json():
+    from memory.conversation_memory import ConversationMemoryManager
+
+    payload = (
+        '{"user_profile": {"name": "张三", "language": "zh", "preferences": ["偏好简洁"]}, '
+        '"task_state": {"current_goal": "分析茅台", "repo": "600519", '
+        '"constraints": [], "decisions": [], "open_questions": []}}'
+    )
+    manager = ConversationMemoryManager(
+        llm=_FakeLLM(payload),
+        config={"memory_facts_enabled": True},
+    )
+    out = manager.extract_facts(
+        None,
+        summary_text="- 任务：分析茅台基本面",
+        old_messages_excerpt=[],
+    )
+    assert out["user_profile"]["name"] == "张三"
+    assert out["task_state"]["repo"] == "600519"
+    txt = manager.format_memory_facts_text(out)
+    assert "张三" in txt
+    assert "600519" in txt
+

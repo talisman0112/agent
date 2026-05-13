@@ -51,9 +51,9 @@ _THEME_CSS = """
     --finsight-muted: #6B7280;
 }
 
-/* 收紧整体留白 */
+/* 主区留白：padding-top 需大于 Streamlit 顶栏高度，否则首屏品牌标题会被工具栏遮挡 */
 .block-container {
-    padding-top: 1.5rem;
+    padding-top: 4.25rem;
     padding-bottom: 6rem;
     max-width: 1180px;
 }
@@ -68,6 +68,7 @@ _THEME_CSS = """
 .fs-brand-title {
     font-size: 1.85rem;
     font-weight: 700;
+    line-height: 1.35;
     color: var(--finsight-primary);
     letter-spacing: 0.5px;
 }
@@ -480,10 +481,12 @@ with st.sidebar:
         st.session_state.messages = []
         if "conversation_summary" in st.session_state:
             del st.session_state["conversation_summary"]
+        if "memory_facts" in st.session_state:
+            del st.session_state["memory_facts"]
         st.success("✅ 已重置对话")
         st.rerun()
 
-    st.caption("⚠️ 本回答仅基于公开信息整理，不构成投资建议。")
+    st.caption("数据来源：研报 / 年报 / 公告 / 政策语料及工具实时拉取。")
 
 
 # ---------------------------------------------------------------------------
@@ -507,10 +510,14 @@ memory_manager = ConversationMemoryManager(
             "conversation_max_history_tokens_before_summary", 3000
         ),
         "summary_max_chars": agent_config.get("conversation_summary_max_chars", 1200),
+        "memory_facts_enabled": agent_config.get("conversation_memory_facts_enabled", True),
+        "memory_facts_max_chars": agent_config.get("conversation_memory_facts_max_chars", 800),
     },
 )
 if "conversation_summary" not in st.session_state:
     st.session_state.conversation_summary = memory_manager.init_summary_state()
+if "memory_facts" not in st.session_state:
+    st.session_state.memory_facts = memory_manager.init_memory_facts()
 if "query_expand_user_enabled" not in st.session_state:
     st.session_state.query_expand_user_enabled = True
 
@@ -602,6 +609,14 @@ if prompt:
                     st.session_state.conversation_summary = memory_manager.update_summary(
                         history, summary_state
                     )
+                    st.session_state.memory_facts = memory_manager.extract_facts(
+                        st.session_state.memory_facts,
+                        summary_text=st.session_state.conversation_summary.get("summary_text", ""),
+                        old_messages_excerpt=memory_manager.get_messages_for_summary(history),
+                    )
+                memory_facts_text = memory_manager.format_memory_facts_text(
+                    st.session_state.memory_facts
+                )
                 expand_off_token = None
                 if not st.session_state.get("query_expand_user_enabled", True):
                     expand_off_token = push_ui_query_expand_force_off()
@@ -611,6 +626,7 @@ if prompt:
                         conversation_history=history,
                         short_term_turns=memory_manager.recent_turns,
                         memory_summary=st.session_state.conversation_summary.get("summary_text", ""),
+                        memory_facts_text=memory_facts_text or None,
                         report_mode=report_mode,
                     )
                     full = st.write_stream(stream)
@@ -675,9 +691,8 @@ if prompt:
 st.markdown(
     """
     <div class="fs-disclaimer">
-        ⚠️ <b>合规声明</b>：本助手回答仅基于公开信息（研报 / 年报 / 公告 / 政策原文 / 实时网络）整理生成，
-        <b>不构成任何投资建议</b>。市场有风险，决策需谨慎；所有数据请以最新官方披露为准。
-        本项目为个人作品集 demo，不用于商业用途。
+        ⚠️ <b>说明</b>：回答基于公开信息（研报 / 年报 / 公告 / 政策原文 / 实时网络）与本地语料；
+        请自行核验关键数据与投资结论。本项目为个人作品集 demo，不用于商业用途。
     </div>
     """,
     unsafe_allow_html=True,

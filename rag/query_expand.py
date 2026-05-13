@@ -29,15 +29,24 @@ _FORCE_UI_EXPAND_OFF: contextvars.ContextVar[bool] = contextvars.ContextVar(
 
 
 def push_ui_query_expand_force_off() -> contextvars.Token:
-    """工作台关闭扩展时调用；返回 reset 用 token（须在 finally 中 reset）。"""
+    """标记「工作台要求关闭 Query 扩展」。
+
+    Streamlit 在用户关闭「使用 Query 扩展」开关时调用；须在 ``finally`` 中传入
+    返回的 token 调用 ``reset_ui_query_expand_force_off``，以恢复上下文默认值。
+
+    Returns:
+        ``contextvars.Token``：传给 ``reset_ui_query_expand_force_off``。
+    """
     return _FORCE_UI_EXPAND_OFF.set(True)
 
 
 def reset_ui_query_expand_force_off(token: contextvars.Token) -> None:
+    """撤销 ``push_ui_query_expand_force_off`` 对当前上下文的影响。"""
     _FORCE_UI_EXPAND_OFF.reset(token)
 
 
 def _ui_forced_expand_off() -> bool:
+    """当前上下文是否处于「工作台强制不扩展」（仅单条原问检索）。"""
     return _FORCE_UI_EXPAND_OFF.get() is True
 
 
@@ -47,31 +56,41 @@ def _ui_forced_expand_off() -> bool:
 
 @dataclass
 class QueryExpandUiRecord:
-    """单次 build_search_queries 的摘要，供界面展示。"""
+    """单次 ``build_search_queries`` 的摘要，供 Streamlit 等前端展示。"""
 
-    path_key: str
-    path_label: str
-    input_preview: str
-    search_queries: list[str]
-    remark: str
+    path_key: str  # 内部路径标识，如 multi_query / decompose / single
+    path_label: str  # 人类可读路径名（中文标签）
+    input_preview: str  # 检索输入截断预览
+    search_queries: list[str]  # 实际用于向量检索的 query 列表
+    remark: str  # 说明本次为何走该路径、与配置/工作台的关系
 
 
 _UI_RECORDS: list[QueryExpandUiRecord] = []
 
 
 def clear_query_expand_ui_records() -> None:
-    """新一轮用户提问前清空（避免串条）。"""
+    """清空待展示的 UI 记录队列。
+
+    在 ``ReactAgent.execute`` 每轮用户提问开始时调用，避免与上一轮检索记录混淆。
+    """
     _UI_RECORDS.clear()
 
 
 def take_query_expand_ui_records() -> list[QueryExpandUiRecord]:
-    """取出并清空队列，供助手回复完成后展示。"""
+    """取出当前队列中所有记录并清空队列。
+
+    助手回复流结束后由前端调用，用于「Query 扩展详情」展开区。
+
+    Returns:
+        按产生顺序排列的 ``QueryExpandUiRecord`` 列表（可能为空）。
+    """
     out = list(_UI_RECORDS)
     _UI_RECORDS.clear()
     return out
 
 
 def _preview_text(text: str, limit: int = 160) -> str:
+    """将长文本压成单行摘要，供 UI 展示检索输入。"""
     t = (text or "").strip().replace("\n", " ")
     if len(t) <= limit:
         return t
@@ -86,6 +105,7 @@ def _append_ui_record(
     search_queries: list[str],
     remark: str,
 ) -> None:
+    """向 UI 队列追加一条 ``build_search_queries`` 结果摘要。"""
     _UI_RECORDS.append(
         QueryExpandUiRecord(
             path_key=path_key,
@@ -131,6 +151,10 @@ _DECOMPOSE_TRIGGER = re.compile(
 
 
 def should_decompose_for_depth(user_query: str) -> bool:
+    """判断是否命中「深度」分解触发词（对比、优缺点、哪些方面等正则）。
+
+    仅表示**是否可走**分解分支，实际是否调用 LLM 还取决于 ``query_decompose_enabled`` 等配置。
+    """
     q = (user_query or "").strip()
     if not q:
         return False
@@ -138,6 +162,7 @@ def should_decompose_for_depth(user_query: str) -> bool:
 
 
 def _dedupe_queries_preserve(queries: list[str]) -> list[str]:
+    """多条检索字符串去重，保留首次出现顺序（大小写折叠比较）。"""
     seen: set[str] = set()
     out: list[str] = []
     for q in queries:
@@ -153,6 +178,7 @@ def _dedupe_queries_preserve(queries: list[str]) -> list[str]:
 
 
 def _message_text(resp: Any) -> str:
+    """从 LangChain 聊天模型返回值中抽出纯文本（兼容字符串 / OpenAI 式 content 列表）。"""
     if resp is None:
         return ""
     content = getattr(resp, "content", resp)
@@ -172,7 +198,10 @@ def _message_text(resp: Any) -> str:
 
 
 def parse_json_string_list(raw: str) -> list[str]:
-    """从模型回复中抽取 JSON 字符串数组。"""
+    """从模型回复中解析 JSON 字符串数组。
+
+    支持 Markdown 围栏、正文内首个 ``[...]`` 截取；解析失败返回空列表。
+    """
     text = (raw or "").strip()
     if not text:
         return []
@@ -212,7 +241,10 @@ def llm_generate_query_variants(
     *,
     n_variants: int,
 ) -> list[str]:
-    """生成至多 n_variants 条额外检索短语（不包含原问）。"""
+    """广度：调用 LLM 生成至多 ``n_variants`` 条**额外**检索短语（不包含用户原句）。
+
+    使用 ``_VARIANT_PROMPT``；失败或 ``llm is None`` 时返回空列表。
+    """
     n = max(0, min(int(n_variants), 12))
     if n == 0 or llm is None:
         return []
@@ -244,7 +276,10 @@ def llm_generate_decomposed_subqueries(
     *,
     max_subqueries: int,
 ) -> list[str]:
-    """生成子问题列表（不含用户原句）。"""
+    """深度：调用 LLM 将用户问题拆成至多 ``max_subqueries`` 条子检索句。
+
+    使用 ``_DECOMPOSE_PROMPT``；返回列表**不含**用户整句原问，由调用方再与原问合并。
+    """
     m_cap = max(1, min(int(max_subqueries), 8))
     if llm is None:
         return []
@@ -272,6 +307,7 @@ def llm_generate_decomposed_subqueries(
 
 
 def document_dedupe_key(doc: Document) -> str:
+    """为 ``Document`` 生成粗排合并去重键：有 ``parent_id`` 用父块 id，否则用 source+正文哈希。"""
     meta = doc.metadata if isinstance(doc.metadata, dict) else {}
     pid = meta.get("parent_id")
     if pid:
@@ -282,6 +318,7 @@ def document_dedupe_key(doc: Document) -> str:
 
 
 def dedupe_documents_preserve_order(docs: list[Document]) -> list[Document]:
+    """文档列表按 ``document_dedupe_key`` 去重，保留首次出现顺序。"""
     seen: set[str] = set()
     out: list[Document] = []
     for d in docs:
@@ -294,6 +331,10 @@ def dedupe_documents_preserve_order(docs: list[Document]) -> list[Document]:
 
 
 def cap_documents(docs: list[Document], max_docs: int) -> list[Document]:
+    """文档列表长度超过 ``max_docs`` 时截取前 ``max_docs`` 条；否则返回原列表。
+
+    约定：``max_docs == 0`` 时不截取（保留原列表，供「无上限」或上层另有 cap 时使用）。
+    """
     mx = max(0, int(max_docs))
     if mx == 0 or len(docs) <= mx:
         return docs
@@ -307,7 +348,17 @@ def coarse_retrieve_union(
     max_coarse_docs: int,
     max_workers: int = 8,
 ) -> list[Document]:
-    """对多条 query 并行向量检索，子块层面去重并按上限截断。"""
+    """对多条检索 query 并行 ``retriever.invoke``，合并子块命中后去重并截断。
+
+    Args:
+        retriever: Chroma ``as_retriever`` 等与 ``invoke(query) -> list[Document]`` 兼容的检索器。
+        search_queries: 检索字符串列表。
+        max_coarse_docs: 合并去重后的子块数量上限。
+        max_workers: 线程池并行度上限（不超过 query 条数）。
+
+    Returns:
+        子块级别 ``Document`` 列表（尚未做父块展开）。
+    """
     unique_q = _dedupe_queries_preserve(search_queries)
     if not unique_q:
         return []
@@ -334,7 +385,23 @@ def build_search_queries(
     cfg: dict,
     llm: Any,
 ) -> list[str]:
-    """根据配置生成送入向量检索的 query 列表（已去重保序）。"""
+    """根据 ``cfg``（通常来自 ``rerank_config`` / rag.yml）与用户上下文生成向量检索用语列表。
+
+    优先级简述：
+
+    1. 工作台 ``push_ui_query_expand_force_off``：仅返回 ``[原问]``，不调用扩写 LLM。
+    2. 深度：``query_decompose_enabled`` 且命中 ``should_decompose_for_depth`` 且 ``llm`` 可用。
+    3. 广度：``query_expansion_enabled`` 且 ``llm`` 可用。
+    4. 否则单条原问；各分支会写入 ``QueryExpandUiRecord`` 供前端展示。
+
+    Args:
+        retrieval_input: 传入检索链的完整字符串（可含对话上下文标签）。
+        cfg: 含 ``query_expansion_*`` / ``query_decompose_*`` 等键的配置字典。
+        llm: Chat 模型实例；为 ``None`` 时不走任何需要 LLM 的扩写。
+
+    Returns:
+        去重且保序的检索 query 列表；输入为空时返回 ``[]``。
+    """
     q0 = (retrieval_input or "").strip()
     if not q0:
         return []

@@ -1,7 +1,8 @@
 """FinSight · 金融工具冲烟测试。
 
 覆盖：
-- get_stock_quote：A 股 / 港股 / 美股 / 指数式短代码 / 错误代码 / NYSE 回退
+- get_stock_quote：A 股 / 港股 / 美股 / 恒生科技等多种别名 / 错误代码 / NYSE 回退
+- get_stock_kline：日线摘要（需外网）
 - get_stock_basics：A / 港 / 美 + 关键字段非空校验
 - convert_currency：常见币对、同币种、错误币种
 
@@ -22,6 +23,7 @@ if str(_PROJECT_ROOT) not in sys.path:
 from tools.finance_tool import (  # noqa: E402
     convert_currency,
     get_stock_basics,
+    get_stock_kline,
     get_stock_quote,
 )
 
@@ -35,7 +37,17 @@ QUOTE_CASES: list[tuple] = [
     ("美股 NVDA NASDAQ",       get_stock_quote, {"ticker": "NVDA"},        ["英伟达", "NVDA"]),
     ("美股 BABA NYSE 回退",    get_stock_quote, {"ticker": "BABA"},        ["阿里"]),
     ("沪市带前缀 sh601318",     get_stock_quote, {"ticker": "sh601318"},    ["平安"]),
+    ("恒生科技 HSTECH",        get_stock_quote, {"ticker": "HSTECH"},       ["TECH", "科技", "恒生"]),
+    ("恒生科技中文别名",        get_stock_quote, {"ticker": "恒生科技"},      ["TECH", "科技", "恒生"]),
+    ("恒生科技 HSI TECH",       get_stock_quote, {"ticker": "HSI TECH"},    ["TECH", "科技", "恒生"]),
+    ("恒生科技 secid",          get_stock_quote, {"ticker": "124.HSTECH"},  ["TECH", "科技", "恒生"]),
+    ("港股 00700.hk 后缀",     get_stock_quote, {"ticker": "00700.hk"},    ["腾讯"]),
     ("非法 ticker abc!@#",     get_stock_quote, {"ticker": "abc!@#"},      ["解析失败", "未找到", "无法识别"]),
+]
+
+KLINE_CASES: list[tuple] = [
+    ("K线 恒生科技近22日",      get_stock_kline, {"ticker": "HSTECH", "trading_days": 22}, ["日线", "secid=124.HSTECH", "涨跌"]),
+    ("K线 茅台近15日",         get_stock_kline, {"ticker": "600519", "trading_days": 15}, ["日线", "收盘"]),
 ]
 
 BASICS_CASES: list[tuple] = [
@@ -80,15 +92,16 @@ def run_block(title: str, cases: list[tuple]) -> tuple[int, int]:
 
 def main() -> int:
     p1, t1 = run_block("get_stock_quote", QUOTE_CASES)
+    p_k, t_k = run_block("get_stock_kline", KLINE_CASES)
     p2, t2 = run_block("get_stock_basics", BASICS_CASES)
     p3, t3 = run_block("convert_currency", FX_CASES)
 
-    total_passed = p1 + p2 + p3
-    total_cases = t1 + t2 + t3
+    total_passed = p1 + p_k + p2 + p3
+    total_cases = t1 + t_k + t2 + t3
 
     print("\n" + "=" * 70)
     print(
-        f"汇总：行情 {p1}/{t1}    基本面 {p2}/{t2}    汇率 {p3}/{t3}    "
+        f"汇总：行情 {p1}/{t1}    K线 {p_k}/{t_k}    基本面 {p2}/{t2}    汇率 {p3}/{t3}    "
         f"合计 {total_passed}/{total_cases}"
     )
     print("=" * 70)

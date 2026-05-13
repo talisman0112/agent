@@ -1,7 +1,9 @@
-"""长对话记忆管理：最近窗口 + 滚动摘要（Phase 1）。"""
+"""长对话记忆管理：最近窗口 + 滚动摘要（Phase 1）+ 结构化事实（Phase 2）。"""
 
 from __future__ import annotations
 
+import json
+import re
 from copy import deepcopy
 from typing import Any
 
@@ -16,13 +18,31 @@ DEFAULT_SUMMARY_STATE = {
     "last_update_turn": 0,
 }
 
+DEFAULT_MEMORY_FACTS = {
+    "user_profile": {
+        "name": None,
+        "language": None,
+        "preferences": [],
+    },
+    "task_state": {
+        "current_goal": None,
+        "repo": None,
+        "constraints": [],
+        "decisions": [],
+        "open_questions": [],
+    },
+}
+
 
 class ConversationMemoryManager:
     """管理长对话的摘要记忆。
 
-    Phase 1 仅实现：
+    Phase 1：
     1. 最近窗口 recent window
     2. 滚动摘要 rolling summary
+
+    Phase 2：
+    3. 结构化长期事实 memory_facts（摘要更新时抽取并合并）
     """
 
     def __init__(self, llm=None, config: dict[str, Any] | None = None):
@@ -35,11 +55,38 @@ class ConversationMemoryManager:
             self.config.get("max_history_tokens_before_summary", 3000)
         )
         self.summary_max_chars = int(self.config.get("summary_max_chars", 1200))
+        self.memory_facts_enabled = bool(self.config.get("memory_facts_enabled", True))
+        self.memory_facts_max_chars = int(self.config.get("memory_facts_max_chars", 800))
 
     def init_summary_state(self, state: dict[str, Any] | None = None) -> dict[str, Any]:
         base = deepcopy(DEFAULT_SUMMARY_STATE)
         if state:
             base.update(state)
+        return base
+
+    def init_memory_facts(self, state: dict[str, Any] | None = None) -> dict[str, Any]:
+        base: dict[str, Any] = deepcopy(DEFAULT_MEMORY_FACTS)
+        if not state:
+            return base
+        up = state.get("user_profile") if isinstance(state.get("user_profile"), dict) else {}
+        ts = state.get("task_state") if isinstance(state.get("task_state"), dict) else {}
+        for k in ("name", "language"):
+            if k in up and up.get(k) is not None:
+                s = str(up[k]).strip()
+                base["user_profile"][k] = s or None
+        if isinstance(up.get("preferences"), list):
+            base["user_profile"]["preferences"] = self._dedupe_str_list(
+                [str(x).strip() for x in up["preferences"] if str(x).strip()][:20]
+            )
+        for k in ("current_goal", "repo"):
+            if k in ts and ts.get(k) is not None:
+                s = str(ts[k]).strip()
+                base["task_state"][k] = s or None
+        for key in ("constraints", "decisions", "open_questions"):
+            if isinstance(ts.get(key), list):
+                base["task_state"][key] = self._dedupe_str_list(
+                    [str(x).strip() for x in ts[key] if str(x).strip()][:20]
+                )
         return base
 
     def normalize_history(self, conversation_history: list[dict] | None) -> list[dict[str, str]]:
@@ -157,6 +204,212 @@ class ConversationMemoryManager:
                 f"【历史摘要】\n{summary_text}"
             )
         )
+
+    def format_memory_facts_text(self, memory_facts: dict[str, Any] | None) -> str:
+        """将结构化事实格式化为模型可读文本；无有效内容时返回空串。"""
+        facts = self.init_memory_facts(memory_facts)
+        if not self._facts_has_content(facts):
+            return ""
+        up = facts["user_profile"]
+        ts = facts["task_state"]
+        lines: list[str] = [
+            "以下是基于当前会话整理的**长期结构化记忆**，与下文摘要互为补充，请一并参考：",
+            "【长期记忆】",
+        ]
+        name = up.get("name")
+        lang = up.get("language")
+        if name:
+            lines.append(f"- 用户称呼或姓名线索：{name}")
+        if lang:
+            lines.append(f"- 输出语言偏好：{lang}")
+        prefs = up.get("preferences") or []
+        if prefs:
+            lines.append("- 其他偏好：")
+            for p in prefs[:12]:
+                lines.append(f"  - {p}")
+        goal = ts.get("current_goal")
+        repo = ts.get("repo")
+        if goal:
+            lines.append(f"- 当前任务/目标：{goal}")
+        if repo:
+            lines.append(f"- 关注标的/代码/范围：{repo}")
+        for label, key in (
+            ("约束条件", "constraints"),
+            ("已确认决策", "decisions"),
+            ("未解决问题", "open_questions"),
+        ):
+            items = ts.get(key) or []
+            if items:
+                lines.append(f"- {label}：")
+                for it in items[:12]:
+                    lines.append(f"  - {it}")
+        text = "\n".join(lines).strip()
+        if len(text) > self.memory_facts_max_chars:
+            return text[: self.memory_facts_max_chars] + "…"
+        return text
+
+    def build_memory_facts_message(self, memory_facts: dict[str, Any] | None) -> HumanMessage | None:
+        text = self.format_memory_facts_text(memory_facts)
+        if not text:
+            return None
+        return HumanMessage(content=text)
+
+    def extract_facts(
+        self,
+        memory_facts: dict[str, Any] | None,
+        *,
+        summary_text: str,
+        old_messages_excerpt: list[dict[str, str]] | None = None,
+    ) -> dict[str, Any]:
+        """根据滚动摘要（及可选旧消息摘录）抽取/合并结构化长期事实。"""
+        if not self.memory_facts_enabled:
+            return self.init_memory_facts(memory_facts)
+
+        summary_text = (summary_text or "").strip()
+        old_messages_excerpt = old_messages_excerpt or []
+        if not summary_text and not old_messages_excerpt:
+            return self.init_memory_facts(memory_facts)
+
+        previous = self.init_memory_facts(memory_facts)
+        if self.llm is None:
+            return previous
+
+        excerpt = self._render_history(old_messages_excerpt[-50:])
+        if len(excerpt) > 6000:
+            excerpt = excerpt[-6000:]
+
+        prompt = self._build_extract_facts_prompt(previous, summary_text, excerpt)
+        try:
+            response = self.llm.invoke(prompt)
+            raw = getattr(response, "content", None)
+            raw = raw if isinstance(raw, str) else str(response)
+            parsed = self._parse_json_object(raw)
+            if parsed:
+                merged = self._validate_and_merge_facts(previous, parsed)
+                logger.info("结构化长期记忆已更新")
+                return merged
+        except Exception as e:
+            logger.warning("结构化记忆抽取失败，保留上一版: %s", e)
+        return previous
+
+    def _build_extract_facts_prompt(
+        self,
+        previous_facts: dict[str, Any],
+        summary_text: str,
+        old_excerpt: str,
+    ) -> str:
+        prev_json = json.dumps(previous_facts, ensure_ascii=False, indent=2)
+        excerpt_block = old_excerpt.strip() or "（无单独摘录，请仅依据摘要与已有事实推断）"
+        return f"""你是会话长期记忆整理助手。请在「已有结构化记忆」基础上，结合「滚动摘要」与「较早对话摘录」更新事实。
+
+要求：
+1. 输出**仅包含**一个 JSON 对象，不要 Markdown、不要代码围栏以外的文字。
+2. JSON 必须严格符合以下结构（键名一致，缺失的列表用 []，缺失的标量用 null）：
+{{
+  "user_profile": {{
+    "name": null,
+    "language": null,
+    "preferences": []
+  }},
+  "task_state": {{
+    "current_goal": null,
+    "repo": null,
+    "constraints": [],
+    "decisions": [],
+    "open_questions": []
+  }}
+}}
+3. 与已有事实矛盾时，以**更新后的对话与摘要**为准。
+4. `repo` 可填股票代码、标的名称、或当前关注范围（投研场景）。
+5. 列表型字段每项为简短字符串，各自最多保留 12 条，去重。
+
+已有结构化记忆（JSON）：
+{prev_json}
+
+当前滚动摘要：
+{summary_text or "（空）"}
+
+较早对话摘录（与摘要窗口可能重叠，供核对）：
+{excerpt_block}
+
+请输出合并后的完整 JSON。"""
+
+    def _parse_json_object(self, text: str) -> dict[str, Any] | None:
+        text = (text or "").strip()
+        if not text:
+            return None
+        m = re.search(r"```(?:json)?\s*([\s\S]*?)```", text, re.I)
+        if m:
+            text = m.group(1).strip()
+        try:
+            obj = json.loads(text)
+            return obj if isinstance(obj, dict) else None
+        except json.JSONDecodeError:
+            pass
+        i = text.find("{")
+        j = text.rfind("}")
+        if i >= 0 and j > i:
+            try:
+                obj = json.loads(text[i : j + 1])
+                return obj if isinstance(obj, dict) else None
+            except json.JSONDecodeError:
+                return None
+        return None
+
+    def _validate_and_merge_facts(
+        self,
+        previous: dict[str, Any],
+        parsed: dict[str, Any],
+    ) -> dict[str, Any]:
+        base = self.init_memory_facts(previous)
+        up = parsed.get("user_profile") if isinstance(parsed.get("user_profile"), dict) else {}
+        ts = parsed.get("task_state") if isinstance(parsed.get("task_state"), dict) else {}
+        for k in ("name", "language"):
+            v = up.get(k)
+            if v is not None and str(v).strip():
+                base["user_profile"][k] = str(v).strip()
+        if isinstance(up.get("preferences"), list):
+            merged = self._dedupe_str_list(
+                (base["user_profile"].get("preferences") or [])
+                + [str(x).strip() for x in up["preferences"] if str(x).strip()]
+            )[:20]
+            base["user_profile"]["preferences"] = merged
+        for k in ("current_goal", "repo"):
+            v = ts.get(k)
+            if v is not None and str(v).strip():
+                base["task_state"][k] = str(v).strip()
+        for key in ("constraints", "decisions", "open_questions"):
+            if isinstance(ts.get(key), list):
+                merged = self._dedupe_str_list(
+                    (base["task_state"].get(key) or [])
+                    + [str(x).strip() for x in ts[key] if str(x).strip()]
+                )[:20]
+                base["task_state"][key] = merged
+        return base
+
+    def _facts_has_content(self, facts: dict[str, Any]) -> bool:
+        up = facts.get("user_profile") or {}
+        ts = facts.get("task_state") or {}
+        if up.get("name") or up.get("language"):
+            return True
+        if isinstance(up.get("preferences"), list) and up["preferences"]:
+            return True
+        if ts.get("current_goal") or ts.get("repo"):
+            return True
+        for key in ("constraints", "decisions", "open_questions"):
+            if isinstance(ts.get(key), list) and ts[key]:
+                return True
+        return False
+
+    @staticmethod
+    def _dedupe_str_list(items: list[str]) -> list[str]:
+        seen: set[str] = set()
+        out: list[str] = []
+        for x in items:
+            if x not in seen:
+                seen.add(x)
+                out.append(x)
+        return out
 
     def _summarize(self, previous_summary: str, new_old_messages: list[dict[str, str]]) -> str:
         history_text = self._render_history(new_old_messages)

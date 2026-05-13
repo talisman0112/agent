@@ -32,9 +32,9 @@
 
 ## 快速开始
 
-```bash
+   ```bash
 # 1. 安装依赖
-pip install -r requirements.txt
+   pip install -r requirements.txt
 
 # 2. 配置 API Key（DashScope 提供 LLM / Embedding / Rerank）
 export DASHSCOPE_API_KEY=sk-xxxxxxxx        # Linux / macOS
@@ -44,8 +44,8 @@ export DASHSCOPE_API_KEY=sk-xxxxxxxx        # Linux / macOS
 python scripts/rebuild_index.py --yes
 
 # 4. 启动 Streamlit 工作台
-streamlit run app.py
-```
+   streamlit run app.py
+   ```
 
 打开浏览器至 `http://localhost:8501` 即可使用。建议体验：
 
@@ -175,21 +175,21 @@ streamlit run app.py
 └──────────┬──────────┘     └──────────┬───────────────────────┘
            │   Web 一条 · 本地可多 query │
            └──────────────┬─────────────┘
-                          ▼
-                ┌─────────────────────┐
+           ▼
+┌─────────────────────┐
                 │   合并候选池          │
                 │  source_channel 标记  │
-                └──────────┬──────────┘
-                           ▼
-                ┌─────────────────────┐
+└──────────┬──────────┘
+                         ▼
+     ┌─────────────────────┐
                 │  Qwen3-Rerank 精排   │
                 │  query = 用户原问    │
                 │  • 阈值过滤（≥0.25）│
                 │  • 去重（≥0.80）    │
                 │  • Instruct 引导     │
-                └──────────┬──────────┘
-                           ▼
-                ┌─────────────────────┐
+     └──────────┬──────────┘
+              ▼
+     ┌─────────────────────┐
                 │  上下文压缩（按需）  │
                 │  AUTO 策略路由       │
                 │  short → none        │
@@ -579,28 +579,17 @@ python -m pytest tests/test_ingestion_clean.py -v
 
 ```text
 FinSight · 中文投研助理 Agent（个人项目，2026.4 – 至今）
-技术栈：Python · LangChain · LangGraph · Streamlit · Chroma · Tongyi(Qwen) · DashScope Rerank
+技术栈：Python · LangChain · LangGraph · Streamlit · Chroma · Qwen / DashScope
 
-- 设计基于 LangGraph ReAct 的工具编排：本地 RAG / Hybrid RAG / 实时行情 / 基本面 /
-  汇率换算 / 财务指标 / 交易日历，共 10 个 @tool，由 middleware 动态切换
-  「对话 / 报告」双模式系统提示词。
-- 自研结构化分块：识别中文章节（第 X 章 / 一二三 / Markdown #），配合
-  RecursiveCharacterTextSplitter 多级分隔符回退 + 父子块映射；30 题黄金集
-  评估 Recall@5 = 100%、MRR = 1.000。
-- 实现 Hybrid RAG：本地研报库 + DuckDuckGo Web 召回进入统一候选池，
-  Qwen3-Rerank 单次精排 + 0.25 阈值过滤 + 0.80 去重；将平均输入 token 从
-  947 降到 429（−54.7%），平均返回文档数 4.93 → 2.30，Precision@actual 88.1%。
-- 实现三策略上下文压缩器（extract / summarize / hybrid），按查询类型自动路由，
-  在 300 token 紧预算下可拿到最大单题压缩率 82.4%（extractive 策略）。
-- 实现「最近窗口 + 滚动摘要」两层长会话记忆，>20 轮对话 token 占用稳定。
-- 自研金融数据工具集：股票行情 / 基本面（东财 push2，免 Key，多市场 ticker
-  规范化 + 自动 NYSE 回退）+ 汇率（open.er-api.com，免 Key），冲烟测试 17/17 通过。
-- 自研投研主题 Streamlit 工作台：A 股涨跌色 + 模式徽章 + 知识库实时统计 +
-  示例提问引导 + 工具调用透明展开。
-- 自动化评估脚本：30 题黄金集 + 三档 pipeline 对照（Vector-only / +Rerank /
-  +Rerank+Compression）+ 多预算压缩力度模拟，单次端到端 ~270s。
+- ReAct Agent + 10 个投研工具（本地 RAG / Hybrid RAG / Web / 行情-基本面-汇率 /
+  财务算术等），middleware 切换对话与结构化报告模式。
+- RAG：结构化分块 + 父子块 + Qwen3-Rerank（阈值/去重）；30 题黄金集 Recall@5=100%，
+  平均输入 token 947→429（−54.7%）；可配置检索 Query 扩展（多用语并行粗排）。
+- Hybrid：本地 + DuckDuckGo 统一候选池单次精排；上下文压缩多策略可配。
+- 记忆：最近窗口 + 滚动摘要；金融工具东财 push2 + 汇率 API，冲烟覆盖多市场。
+- Streamlit 投研工作台；检索评估与压缩模拟脚本（eval_retrieval_metrics 等）。
 
-GitHub: github.com/<you>/finsight    Demo: <streamlit / HF link>
+GitHub: <你的仓库>    Demo: <可选链接>
 ```
 
 ---

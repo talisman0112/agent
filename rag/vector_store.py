@@ -14,6 +14,8 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from model.model import embedding_model
 from utils.config_hander import chroma_config
 from utils.file_hander import (
+    iter_csv_documents,
+    iter_json_documents,
     doc_loader,
     docx_loader,
     get_file_md5,
@@ -146,6 +148,42 @@ class VectorStoreService:
     def get_retriever(self):
         return self.chroma.as_retriever(search_kwargs={"k": chroma_config["k"]})
 
+    def _add_split_documents(self, document: list[Document]) -> tuple[int, int]:
+        """将已加载、可选结构化后的文档列表切块写入 Chroma；返回 (子块数, 父块数)。"""
+        prepend_cfg = chroma_config.get("structured_chunking_enabled", True) and chroma_config.get(
+            "structured_chunk_prepend_section", True
+        )
+        use_pc = chroma_config.get("parent_child_enabled", False) and self.parent_store is not None
+
+        if use_pc:
+            split_documents: list[Document] = []
+            parent_count = 0
+            for p_doc in document:
+                parent_id = str(uuid.uuid4())
+                parent_text = _parent_document_for_store(p_doc, prepend_cfg)
+                pmeta = dict(p_doc.metadata or {})
+                pmeta["parent_id"] = parent_id
+                self.parent_store.put(parent_id, parent_text, pmeta)
+                parent_count += 1
+                kids = self.spliter.split_documents([p_doc])
+                if prepend_cfg:
+                    kids = prepend_section_title_to_chunks(kids)
+                for k in kids:
+                    km = {**(k.metadata or {}), "parent_id": parent_id}
+                    split_documents.append(Document(page_content=k.page_content, metadata=km))
+            if not split_documents:
+                return 0, 0
+            self.chroma.add_documents(split_documents)
+            return len(split_documents), parent_count
+
+        split_documents = self.spliter.split_documents(document)
+        if prepend_cfg:
+            split_documents = prepend_section_title_to_chunks(split_documents)
+        if not split_documents:
+            return 0, 0
+        self.chroma.add_documents(split_documents)
+        return len(split_documents), 0
+
     def load_data(self) -> None:
         """读取 `database_path` 下允许后缀的文件，分块并写入 Chroma。
 
@@ -192,6 +230,57 @@ class VectorStoreService:
                 logger.info("Skip unchanged file (already in md5 ledger): %s", file_path)
                 continue
             try:
+                lp = file_path.lower()
+                if lp.endswith(".csv"):
+                    doc_iter = iter_csv_documents(file_path)
+                    stream_label = "CSV"
+                elif lp.endswith((".json", ".jsonl")):
+                    doc_iter = iter_json_documents(file_path)
+                    stream_label = "JSON"
+                else:
+                    doc_iter = None
+
+                if doc_iter is not None:
+                    total_chunks = 0
+                    total_parents = 0
+                    batches = 0
+                    for raw_doc in doc_iter:
+                        batch = clean_documents(
+                            [raw_doc], ingestion_clean_cfg, source_hint=file_path
+                        )
+                        if not batch:
+                            continue
+                        if chroma_config.get("structured_chunking_enabled", True):
+                            batch = split_documents_by_sections(batch)
+                        ch, par = self._add_split_documents(batch)
+                        if ch:
+                            batches += 1
+                            total_chunks += ch
+                            total_parents += par
+                    if total_chunks == 0:
+                        logger.error("%s produced no chunks: %s", stream_label, file_path)
+                        continue
+                    append_digest(digest)
+                    use_pc = chroma_config.get("parent_child_enabled", False) and self.parent_store is not None
+                    if use_pc:
+                        logger.info(
+                            "Indexed %s %s (%d batches, %d child chunks, %d parents)",
+                            stream_label,
+                            file_path,
+                            batches,
+                            total_chunks,
+                            total_parents,
+                        )
+                    else:
+                        logger.info(
+                            "Indexed %s %s (%d batches, %d chunks)",
+                            stream_label,
+                            file_path,
+                            batches,
+                            total_chunks,
+                        )
+                    continue
+
                 document = _documents_from_file(file_path)
                 if not document:
                     logger.error("No documents loaded: %s", file_path)
@@ -202,47 +291,21 @@ class VectorStoreService:
                     continue
                 if chroma_config.get("structured_chunking_enabled", True):
                     document = split_documents_by_sections(document)
-                prepend_cfg = chroma_config.get("structured_chunking_enabled", True) and chroma_config.get(
-                    "structured_chunk_prepend_section", True
-                )
-                use_pc = chroma_config.get("parent_child_enabled", False) and self.parent_store is not None
-
-                if use_pc:
-                    split_documents = []
-                    parent_count = 0
-                    for p_doc in document:
-                        parent_id = str(uuid.uuid4())
-                        parent_text = _parent_document_for_store(p_doc, prepend_cfg)
-                        pmeta = dict(p_doc.metadata or {})
-                        pmeta["parent_id"] = parent_id
-                        self.parent_store.put(parent_id, parent_text, pmeta)
-                        parent_count += 1
-                        kids = self.spliter.split_documents([p_doc])
-                        if prepend_cfg:
-                            kids = prepend_section_title_to_chunks(kids)
-                        for k in kids:
-                            km = {**(k.metadata or {}), "parent_id": parent_id}
-                            split_documents.append(
-                                Document(page_content=k.page_content, metadata=km)
-                            )
-                else:
-                    split_documents = self.spliter.split_documents(document)
-                    if prepend_cfg:
-                        split_documents = prepend_section_title_to_chunks(split_documents)
-                if not split_documents:
+                ch, par = self._add_split_documents(document)
+                if not ch:
                     logger.error("Split produced no chunks: %s", file_path)
                     continue
-                self.chroma.add_documents(split_documents)
                 append_digest(digest)
+                use_pc = chroma_config.get("parent_child_enabled", False) and self.parent_store is not None
                 if use_pc:
                     logger.info(
                         "Indexed %s (%d child chunks, %d parents)",
                         file_path,
-                        len(split_documents),
-                        parent_count,
+                        ch,
+                        par,
                     )
                 else:
-                    logger.info("Indexed %s (%d chunks)", file_path, len(split_documents))
+                    logger.info("Indexed %s (%d chunks)", file_path, ch)
             except Exception:
                 logger.error("Error loading file %s", file_path, exc_info=True)
         logger.info("Ingest scan finished (%d paths under %s)", len(paths), data_dir)

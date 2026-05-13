@@ -1,4 +1,4 @@
-# 仅在需要入库或加载 Excel / 旧版 PPT 时再安装（叠加在 requirements.txt 之上）
+# 仅在需要入库或加载 Excel / 旧版 PPT / Kaggle 拉取脚本时再安装（叠加在 requirements.txt 之上）
 #
 #   pip install -r requirements.txt -r requirements-optional.txt
 #
@@ -7,3 +7,4 @@
 unstructured>=0.14.0
 openpyxl>=3.1.0
 python-pptx>=0.6.21
+kagglehub>=1.0.1

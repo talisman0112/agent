@@ -49,6 +49,14 @@ def _build_memory_summary_message(summary_text: str | None) -> HumanMessage | No
     )
 
 
+def _build_memory_facts_message(facts_text: str | None) -> HumanMessage | None:
+    """将结构化长期记忆包装成一条辅助消息，插在历史摘要之前（Phase 2）。"""
+    text = (facts_text or "").strip()
+    if not text:
+        return None
+    return HumanMessage(content=text)
+
+
 def _message_text(msg) -> str:
     c = getattr(msg, "content", None)
     if isinstance(c, str):
@@ -87,6 +95,7 @@ class ReactAgent:
         conversation_history: list[dict] | None = None,
         short_term_turns: int | None = 20,
         memory_summary: str | None = None,
+        memory_facts_text: str | None = None,
         log_tool_calls: bool = True,
         report_mode: bool = False,
     ):
@@ -95,6 +104,7 @@ class ReactAgent:
         ``conversation_history`` 为短期记忆：每项 ``{"role": "user"|"assistant", "content": str}``，
         应为**不含本轮用户提问**的上文；不传则与本实现原先行为一致（单轮）。
         ``short_term_turns`` 表示最多保留的对话轮数上限（每轮约含一条用户消息与一条助手消息）。
+        ``memory_facts_text`` 为结构化长期事实文本（Phase 2），会插入在滚动摘要之前。
         ``memory_summary`` 为更早历史对话的压缩摘要，会插入在最近窗口消息之前。
         ``report_mode`` 控制使用的提示词策略：True 时使用报告模式（结构化、可沉淀的回答），
         False 时使用主对话模式（常规对话）。
@@ -112,8 +122,10 @@ class ReactAgent:
             conversation_history or [],
             max_turns=short_term_turns,
         )
+        facts_message = _build_memory_facts_message(memory_facts_text)
         summary_message = _build_memory_summary_message(memory_summary)
         messages_to_send = [
+            *([facts_message] if facts_message is not None else []),
             *([summary_message] if summary_message is not None else []),
             *prior,
             HumanMessage(content=user_input),
