@@ -577,17 +577,26 @@ python -m pytest tests/test_ingestion_clean.py -v
 
 ## 简历项目段（可直接复制）
 
-```text
-FinSight · 中文投研助理 Agent（个人项目，2026.4 – 至今）
-技术栈：Python · LangChain · LangGraph · Streamlit · Chroma · Qwen / DashScope
+**一页纸建议**：项目名称 + 时间 + 技术栈占一行；下列 4～5 条按岗位取舍（算法岗强调 RAG/评测，工程岗强调 Agent/MCP/流水线）。
 
-- ReAct Agent + 10 个投研工具（本地 RAG / Hybrid RAG / Web / 行情-基本面-汇率 /
-  财务算术等），middleware 切换对话与结构化报告模式。
-- RAG：结构化分块 + 父子块 + Qwen3-Rerank（阈值/去重）；30 题黄金集 Recall@5=100%，
-  平均输入 token 947→429（−54.7%）；可配置检索 Query 扩展（多用语并行粗排）。
-- Hybrid：本地 + DuckDuckGo 统一候选池单次精排；上下文压缩多策略可配。
-- 记忆：最近窗口 + 滚动摘要；金融工具东财 push2 + 汇率 API，冲烟覆盖多市场。
-- Streamlit 投研工作台；检索评估与压缩模拟脚本（eval_retrieval_metrics 等）。
+```text
+FinSight · 中文投研 Copilot Agent（个人项目｜2026.04 – 至今）
+技术栈：Python 3.10+ · LangChain / LangGraph（ReAct）· Streamlit · Chroma · DashScope（Qwen 对话 / Embedding / Qwen3-Rerank）
+
+• 搭建面向 A 股/港美股的 LangGraph ReAct Agent：以模型语义决策路由 10 个领域工具（本地与混合 RAG、DuckDuckGo、
+  行情/基本面快照、汇率换算、财务指标纯算术等），middleware 在对话模式与「个股/行业/晨会」三类报告模板间切换，
+  Streamlit 侧流式展示最终回复。
+• RAG 链路：财经语料章节感知结构化分块 + Parent-Child 向量检索；精排采用 Qwen3-Rerank，叠加分数阈值、
+  近文本去重与 Instruct 模式。自建 30 题检索黄金集上 Recall@5=100%、MRR=1.0；在召回饱和前提下将送入总结的
+  上下文由约 947 tokens 压至约 429（−54.7%），直接降低上游 LLM 成本。支持可配置 Query 扩展/子问题分解，
+  以延迟换检索广度。
+• Hybrid 设计：本地向量召回与 Web 结果汇入同一候选池后只跑一次 Rerank，规避双源分别加权带来的偏置；
+  链尾按 query 特征自动路由 extract / summarize / hybrid 上下文压缩，短文档按需跳过避免过压。
+• 长对话记忆：滚动摘要 + 固定近期窗口；扩展阶段由 LLM 维护 JSON 结构化长期事实（用户偏好、任务目标等），
+  在轮次与 token 阈值触发下合并更新，平衡连贯性与上下文预算。
+• 工程化落地：多格式文档入库 + MD5 增量跳过与可配置的 ingestion 清洗；东方财富 push2 行情/基本面封装
+  （多市场 ticker、指数退避重试、进程内 TTL 缓存防抖）。另实现 MCP stdio Server，将核心 RAG 工具暴露给
+  Cursor / Claude Desktop 等客户端；配套检索三档对照评估脚本、RAG/金融/MCP 冒烟测试与 pytest 回归。
 
 GitHub: <你的仓库>    Demo: <可选链接>
 ```

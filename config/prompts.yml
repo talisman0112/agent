@@ -3,7 +3,7 @@
 # ReAct Agent 主系统提示（工具调用、多轮推理）
 main_prompt: prompts/main_prompt.txt
 
-# RAG 问答专用提示（含 {context}、{question} 占位符，见 ragsummarize 等）
+# RAG 问答专用提示（含 {context}、{question} 占位符）。强约束见 config/rag.yml 的 rag_strict_grounding。
 rag_prompt: prompts/rag_prompt.txt
 
 # 当 runtime context.report 为 true 时切换的报告类提示（见 tools/mid_ware.py）

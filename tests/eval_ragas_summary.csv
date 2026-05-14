@@ -1,0 +1,3 @@
+metric,mean,std,n_valid,dataset,n_total,n_evaluated,metrics_used
+answer_relevancy,0.638827,0.306634,29,C:\Users\lenovo\Desktop\rag\agent\tests\golden_set.yml,30,29,faithfulness;answer_relevancy
+faithfulness,0.686405,0.291688,29,C:\Users\lenovo\Desktop\rag\agent\tests\golden_set.yml,30,29,faithfulness;answer_relevancy

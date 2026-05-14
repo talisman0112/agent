@@ -8,3 +8,6 @@ unstructured>=0.14.0
 openpyxl>=3.1.0
 python-pptx>=0.6.21
 kagglehub>=1.0.1
+
+# RAGAS 端到端评测（scripts/eval_ragas.py）
+ragas>=0.4.0

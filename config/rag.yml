@@ -7,13 +7,22 @@ chat_model: qwen3-max
 # 文本向量模型名称（用于 Chroma 入库与检索）
 embedding_model: text-embedding-v3
 
+# RAG 子模型：`rag_strict_grounding: true` 时在主提示词末尾追加强约束尾注（跑 RAGAS faithfulness 时用）；日常建议 false
+rag_strict_grounding: false
+
+# --- RAGAS 评估 scripts/eval_ragas.py（RunConfig）；仍超时可再加长时间或减小并发 ---
+# ragas_eval_timeout_seconds: 每条样本×每个指标的异步上限（秒）。RAGAS 默认仅 180，faithfulness 内多跳 LLM 常会触发 TimeoutError
+ragas_eval_timeout_seconds: 480
+# ragas_eval_max_workers: 评估并发；过高易触达 DashScope 限速排队，看起来像超时（可用环境变量 RAGAS_EVAL_MAX_WORKERS 覆盖）
+ragas_eval_max_workers: 6
+
 # --- RAG Rerank 配置 ---
 # rerank_enabled: 是否启用 Rerank 精排
 rerank_enabled: true
 # rerank_model: 模型名称，qwen3-rerank(推荐), gte-rerank-v2
 rerank_model: qwen3-rerank
 # rerank_top_n: 精排后保留的文档数量
-rerank_top_n: 5
+rerank_top_n: 7
 # rerank_search_k: 向量检索召回数量（粗排候选数）
 rerank_search_k: 20
 
@@ -25,7 +34,8 @@ rerank_score_threshold: 0.25
 
 # rerank_dedup_threshold: 去重相似度阈值（0-1），超过此值认为是重复文档，默认0.70
 # 值越小越严格（更容易判定为重复），建议范围 0.60-0.85
-rerank_dedup_threshold: 0.80
+rerank_dedup_threshold: 0.70
+
 
 # rerank_instruct_mode: 预设 instruct 模式
 # 可选: qa(问答), semantic(语义), definition(定义), code(代码), fact(事实), comparison(对比), summary(摘要)
@@ -41,11 +51,11 @@ rerank_auto_instruct: true
 
 # --- 对话模型（ChatTongyi / DashScope）采样与长度；缺省不写则沿用集成默认行为 ---
 # temperature: 取值越大输出越发散，越小越趋于确定性
-temperature: 0.7
+temperature: 0.3
 # max_tokens: 单次回复上限（上限以模型服务端为准）
-max_tokens: 8192
+max_tokens: 4096
 # top_p:  nucleus sampling，与 Tongyi 的 top_p 字段一致；通常与 temperature 配合调风格
-top_p: 0.9
+top_p: 0.7
 
 # --- 多路召回（Hybrid RAG）配置 ---
 # 同时从 Web 搜索和本地知识库召回，经 Rerank 精排后返回最相关结果
@@ -54,10 +64,10 @@ top_p: 0.9
 hybrid_enabled: true
 
 # hybrid_web_max_results: Web 搜索返回结果数（建议 3-10）
-hybrid_web_max_results: 5
+hybrid_web_max_results: 10
 
 # hybrid_local_k: 本地向量检索召回数（粗排候选数）
-hybrid_local_k: 15
+hybrid_local_k: 10
 
 # hybrid_rerank_top_n: 多路召回后 Rerank 精排保留的 Top-N
 hybrid_rerank_top_n: 5

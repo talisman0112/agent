@@ -2,7 +2,13 @@ from abc import ABC, abstractmethod
 from typing import Any, Optional
 from langchain_core.embeddings import Embeddings
 from utils.config_hander import rag_config
+from utils.dashscope_langchain_patch import apply_dashscope_langchain_patch
+
 import os
+
+# 须在首次使用 ChatTongyi / Tongyi 之前执行，否则会话错误被错误的 HTTPError 包装掩盖
+apply_dashscope_langchain_patch()
+
 try:
     from langchain_community.chat_models.tongyi import ChatTongyi
 except ImportError:
@@ -26,7 +32,10 @@ class chat_model(base_model):
             return None
         # Tongyi 集成走 DashScope；未传 api_key 时由 ChatTongyi 读环境变量 DASHSCOPE_API_KEY
         api_key = os.getenv("TONGYI_API_KEY") or os.getenv("DASHSCOPE_API_KEY")
-        kwargs: dict[str, Any] = {"model_name": rag_config["chat_model"]}
+        name_override = (os.getenv("RAG_CHAT_MODEL") or "").strip()
+        kwargs: dict[str, Any] = {
+            "model_name": name_override or rag_config["chat_model"],
+        }
         if api_key:
             kwargs["api_key"] = api_key
 
@@ -51,7 +60,8 @@ class embedding_model(base_model):
     def generator(self) -> Optional[Embeddings]:
         if DashScopeEmbeddings is None:
             return None
-        return DashScopeEmbeddings(model=rag_config["embedding_model"])
+        emb = (os.getenv("RAG_EMBEDDING_MODEL") or "").strip() or rag_config["embedding_model"]
+        return DashScopeEmbeddings(model=emb)
 
 
 chat_model = chat_model().generator()

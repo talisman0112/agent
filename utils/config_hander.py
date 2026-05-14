@@ -51,7 +51,7 @@ rerank_config = {
     "auto_instruct": rag_config.get("rerank_auto_instruct", True),
     "custom_instruct": rag_config.get("rerank_custom_instruct"),
     # 上下文压缩配置
-    "compression_enabled": rag_config.get("compression_enabled", True),
+    "compression_enabled": rag_config.get("compression_enabled", False),
     "compression_max_tokens": rag_config.get("compression_max_tokens", 3500),
     "compression_min_tokens": rag_config.get("compression_min_tokens", 200),
     "compression_extract_ratio": rag_config.get("compression_extract_ratio", 0.6),

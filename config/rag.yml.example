@@ -12,6 +12,13 @@ vector_store:
 chunk_size: 800
 chunk_overlap: 100
 
+# RAG：`rag_strict_grounding: true` 时追加强约束尾注（禁止通识兜底段）；跑 RAGAS 时可开，日常多为 false
+rag_strict_grounding: false
+
+# scripts/eval_ragas.py · RAGAS RunConfig（防超时；可被 RAGAS_EVAL_TIMEOUT_SECONDS / RAGAS_EVAL_MAX_WORKERS 环境变量覆盖）
+ragas_eval_timeout_seconds: 480
+ragas_eval_max_workers: 6
+
 # ==================== Rerank 配置 ====================
 
 # 是否启用 Rerank
