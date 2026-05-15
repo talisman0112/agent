@@ -179,7 +179,7 @@
 
 - id: q28
   category: demo_company
-  question: "星核能源（999001）2024 年营收和净利润是多少？"
+  question: "星核能源 2024 年营收和净利润是多少？"
   expected_docs: [sample_company_starcore_energy.md]
   expected_keywords: [星核能源, 312, 38]
 
