@@ -1,8 +1,8 @@
 # ReAct / 工具调用 Agent 的通用参数（当前工程在 import 时会加载本文件；
 # 若要在代码中使用，请 from utils.config_hander import agent_config 读取相应键）
 
-# 单次对话中模型推理+工具调用的最大步数（防止死循环）
-max_iterations: 15
+# 单次对话 ReAct 最大轮数（防止死循环）；运行时映射为 LangGraph recursion_limit = max_iterations * 2 + 1
+max_iterations: 18
 
 # 是否在控制台输出中间推理步骤（便于调试）
 verbose: false
@@ -37,3 +37,14 @@ conversation_memory_facts_enabled: true
 
 # 注入模型的结构化记忆文本最大字符数
 conversation_memory_facts_max_chars: 800
+
+# ==================== Intent Guard（P0：意图契约注入） ====================
+
+intent_guard:
+  enabled: true
+  classifier: rule
+  inject_contract: true
+  post_validate: true
+  max_correction_rounds: 1
+  strict_numbers: true
+  log_decision_trace: true

@@ -67,7 +67,7 @@ class GoldenItem:
     category: str
     question: str
     expected_docs: list[str]
-    expected_keywords: list[str]
+    expected_keywords: list[Any]
 
 
 @dataclass
@@ -122,13 +122,20 @@ def _doc_basename(doc: Document) -> str:
     return os.path.basename(src)
 
 
+def _keyword_match_str(kw: Any) -> str:
+    """YAML 会把未加引号的数字解析为 int/float；子串匹配前统一为 str。"""
+    if kw is None:
+        return ""
+    return str(kw).strip()
+
+
 def _is_relevant(doc: Document, item: GoldenItem) -> bool:
     """元数据匹配优先，关键词兜底。"""
     bn = _doc_basename(doc)
     if bn and bn in item.expected_docs:
         return True
     text = (doc.page_content or "")
-    return any(kw and kw in text for kw in item.expected_keywords)
+    return any((s := _keyword_match_str(kw)) and s in text for kw in item.expected_keywords)
 
 
 def _est_tokens(chars: int) -> int:

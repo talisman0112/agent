@@ -62,4 +62,243 @@ RAGAS: {'faithfulness': 0.6864, 'answer_relevancy': 0.6388}
 继续优化promot允许 开篇 1～2 句复述问题与作答范围（不引入新事实）；其后仍禁用通识段，只在 【依据摘录】/【可查结论】 里写有出处的内容。
 调整黄金数据集中的虚构代码，以修正关联性
 RAGAS: {'faithfulness': 0.6993, 'answer_relevancy': 0.7955}
-可见黄金数据集和正确提示词对f/ar的影响较大，不过这也有ragas评分方式的影响，正常情况下，加入人工处理是一个更加稳妥的选择
+可见黄金数据集和正确提示词对f/ar的影响较大，不过这也有ragas评分方式的影响，正常情况下，加入人工处理是一个更加稳妥的选择。
+
+5.19
+加入Intent Guard：模型决策兜底实施计划
+意图识别————结果监控————以及步数控制和对工具调用出错的处理
+Intent Guard
+在intent_router中，通过接收用户的query和上下文来对用户的意图进行识别，来为模型推荐工具，通过这样的tag标签来对模型的工具调用进行约束（类似rerank的Instruct）从而使得模型规范的使用工具
+与prompt搭配，对模型工作进行第一步规范（这是初步引导，软约束，相当于与模型定下一个约定）
+app.py 收到用户 prompt
+    ↓
+classify_intent(prompt, history, memory_facts, report_mode=...)
+    ↓
+IntentContract
+    ↓
+ReactAgent.execute(..., intent_contract=contract)  # 把契约塞进 messages
+    ↓
+模型 ReAct 自己选工具、作答
+
+结果监控：intent/decision_validator.py
+通过对意图识别的规范模板与模型实际执行的结果（使用了什么工具，本轮的模型输出），来对模型回答进行判断是否合法（检查约定工具是否被调用，禁止工具是否被调用，出现了数据但是是否调用data_tool【r3】），如果不合法，将下一轮的模型的exec中加入以下提示：
+VIOLATION_HINTS: dict[Violation, str] = {
+    Violation.MISSING_REQUIRED_TOOL: (
+        "上一轮未调用任务契约要求的工具。请立即调用契约中的「建议至少调用」列表里的工具之一，"
+        "并基于工具返回重新组织回答。"
+    ),
+    Violation.FORBIDDEN_TOOL_USED: (
+        "上一轮使用了契约不建议单独依赖的工具。请改用契约允许的工具组合后重新作答。"
+    ),
+    Violation.NUMBERS_WITHOUT_TOOLS: (
+        "回答中出现了具体行情/估值类数字，但未调用行情、Web 或 hybrid 工具。"
+        "请先调用相关工具获取数据，再输出数字；若工具失败须如实说明，勿编造。"
+    ),
+    Violation.STALE_SOURCE_ONLY: (
+        "时效性问题仅使用了本地 RAG，未检索 Web。请调用 web_search 或 hybrid_search / hybrid_summarize 后重新作答。"
+    ),
+}
+所以下一轮的exec是:
+[长期记忆 facts]
+[历史摘要 summary]
+[本轮任务契约]          ← P0，两轮都有
+[多轮对话 prior]
+[用户本轮问题]          ← 仍是原始 prompt
+[【系统纠正】+ hint]    ← P1 仅纠正轮追加
+hint模板：
+上一轮未满足任务契约，违规项：MISSING_REQUIRED_TOOL。
+意图类型：QUOTE_SNAPSHOT。
+请至少调用以下工具之一：`get_stock_quote`、...
+{对应 VIOLATION_HINTS 段落}
+请基于最新工具返回完整重答...
+
+通过 max_correction_rounds: 1 设置循环最大轮次
+避免陷入死循环,若次数满后仍有非法情况，执行DoneWarn给用户提示可能有错误消息，而不是阻断回答。
+
+LangGraph 默认 create_agent上线步数是9999
+所以通过recursion_limit控制agent的步数（与轮次区别，llm一步，tool一步）：防 ReAct 图步数失控（死循环/过长链），同时限制单问里的 API 调用次数和延迟（步数有顶）
+其次，设置handle_parsing_errors：某次 工具执行 抛异常（参数错、网络错、工具内部错误等）不让整个 Agent 崩掉，而是回一条 ToolMessage(status="error")，把错误文字交给模型，让它改参数或换工具再试
+完整监控机制：（Intent Guard 计划全链路 · P0/P1/P2 已落地，P3 部分完成）
+
+═══════════════════════════════════════════════════════════════
+一、总览：五层防御 + 与 FinSight 主链路的关系
+═══════════════════════════════════════════════════════════════
+
+用户提问（Streamlit app.py）
+    │
+    ├─【并行准备】长记忆：should_compact → 滚动摘要 + memory_facts
+    │
+    ├─ L0 意图规范（P0）intent/intent_router.py :: classify_intent
+    │       → IntentTag + IntentContract（必选/禁选工具、query_hints、constraints）
+    │
+    ├─ L1 软引导（P0 + 原有）
+    │       main_prompt / report_prompt（mid_ware.py）
+    │       + 各 @tool description
+    │       + 注入【本轮任务契约】HumanMessage
+    │
+    ├─ L2 执行期兜底（原有，Intent Guard 不替代）
+    │       RAG rerank/压缩、query_expand、rag_summarize 原文 fallback、行情多源 fallback…
+    │
+    ├─ ReAct 循环（LangGraph create_agent）
+    │       P2：recursion_limit = max_iterations*2+1（防图步数死循环）
+    │       P2：handle_tool_errors_middleware（工具执行异常 → ToolMessage error）
+    │
+    ├─ L3 事后监控（P1）intent/decision_validator.py :: validate
+    │       对照契约 + last_tool_calls + assistant_reply
+    │       → 违规则最多 1 次纠正 execute（max_correction_rounds）
+    │
+    └─ L4 可观测与回归（P3）
+            last_decision_trace、log/agent.log、UI caption、pytest
+
+灰度：config/agent.yml → intent_guard.enabled: false 时整段 L0/L3 跳过，P2 仍随 agent.yml 生效。
+
+═══════════════════════════════════════════════════════════════
+二、端到端时序（单轮用户问题）
+═══════════════════════════════════════════════════════════════
+
+[1] app.py 收到 prompt（含 report_mode 侧边栏）
+[2] 若需压缩：ConversationMemoryManager 更新 summary / memory_facts
+[3] guard_cfg = agent_config.intent_guard
+[4] 若 enabled：classify_intent(prompt, history, memory_facts, report_mode)
+        → IntentContract（例：QUOTE_SNAPSHOT，required_tools 含 get_stock_quote）
+[5] ReactAgent.execute（第 1 轮）
+        stream(config={recursion_limit: 37})  # max_iterations=18 时
+        messages 顺序见「三」
+        → 流式 assistant_reply
+        → last_tool_calls
+[6] 若 post_validate 且 有 contract：
+        validate(contract, calls, assistant_reply)
+        → violations 列表（R1~R4，见「四」）
+[7] 若 violations 非空 且 max_correction_rounds > 0：
+        format_correction_hint → 第 2 轮 execute(correction_hint=...)
+        （UI：意图校验未通过，正在纠正重试…）
+        再次 validate → 更新 trace
+[8] UI：caption「意图识别：XXX · 校验：通过/纠正后通过/已纠正仍存疑/未通过」
+[9] 仅将最终 assistant 写入 st.session_state.messages（不含【系统纠正】）
+
+═══════════════════════════════════════════════════════════════
+三、模型侧消息组装顺序（每轮 execute）
+═══════════════════════════════════════════════════════════════
+
+第 1 轮（正常）：
+    [长期记忆 memory_facts_text]
+    [历史摘要 summary]
+    [本轮任务契约]              ← P0 inject_contract
+    [多轮 prior：最近 N 轮 user/assistant]
+    [用户本轮 prompt]
+
+第 2 轮（纠正，仅 P1 触发）：
+    同上 +
+    [【系统纠正】+ format_correction_hint 全文]   ← 不写入会话历史
+
+系统主 prompt（角色+工具策略）由 middleware report_prompt_switch 在 model 调用前注入，与上表并行。
+
+═══════════════════════════════════════════════════════════════
+四、L3 后置校验规则（decision_validator.py）
+═══════════════════════════════════════════════════════════════
+
+输入三件套：IntentContract | last_tool_calls（工具名） | assistant_reply（最终正文）
+
+R1 MISSING_REQUIRED_TOOL
+    required_tools 非空，且实际调用与之无交集
+    （主要看 tools，不看 reply）
+
+R2 FORBIDDEN_TOOL_USED
+    调用了契约 forbidden_tools 中的工具
+
+R3 NUMBERS_WITHOUT_TOOLS（可 strict_numbers: false 关闭）
+    意图 ∈ {QUOTE_SNAPSHOT, INVESTMENT_ADVICE, REALTIME_NEWS}
+    且 reply 正则命中「像股价/PE/市值等数字」
+    且 未调 _DATA_TOOLS（行情/Web/hybrid/get_market_datetime 等）
+
+R4 STALE_SOURCE_ONLY
+    意图 REALTIME_NEWS，且只调了 rag_summarize / rag_retrieve
+
+校验结果 → violations[] → 空=通过；非空且允许纠正 → 进入纠正轮。
+
+═══════════════════════════════════════════════════════════════
+五、纠正轮与 max_correction_rounds
+═══════════════════════════════════════════════════════════════
+
+max_correction_rounds: 1  →  每问最多 2 次 execute（1 正常 + 1 纠正），不 while 死循环。
+
+纠正后仍违规 → validation =「已纠正仍存疑 (VIOLATION…)」→ 仍展示第 2 轮回复，不阻断。
+
+max_correction_rounds: 0  →  只校验不纠正，显示「未通过 (...)」。
+
+═══════════════════════════════════════════════════════════════
+六、P2 运行时（与业务契约正交的基础设施）
+═══════════════════════════════════════════════════════════════
+
+utils/agent_runtime.py：
+    max_iterations（yml，默认 18）
+        → recursion_limit = max_iterations * 2 + 1   # 每轮 ReAct ≈ model 步 + tools 步
+    handle_parsing_errors（yml，默认 true）
+        → tools/mid_ware.py :: handle_tool_errors_middleware
+        → 工具抛错时返回 ToolMessage(status=error)，模型可改参重试
+
+注意：P2 不管「该不该调 get_stock_quote」；那是 P0/P1。P2 管「调了但挂了」和「图跑太久」。
+
+═══════════════════════════════════════════════════════════════
+七、配置开关（config/agent.yml）
+═══════════════════════════════════════════════════════════════
+
+intent_guard:
+  enabled: true              # false：不 classify、不 validate
+  inject_contract: true      # false：只分类写 trace，不注入契约消息
+  post_validate: true        # false：不做 L3、不纠正
+  max_correction_rounds: 1
+  strict_numbers: true       # false：关闭 R3
+  log_decision_trace: true
+
+max_iterations: 18           # → recursion_limit 37
+handle_parsing_errors: true
+
+═══════════════════════════════════════════════════════════════
+八、可观测字段（last_decision_trace / 日志）
+═══════════════════════════════════════════════════════════════
+
+intent, confidence, source, required_tools, forbidden_tools, query_hints, constraints
+violations[], corrected, validation, tool_names[]
+
+日志关键字：intent_guard contract / intent_guard trace / ReactAgent runtime
+
+═══════════════════════════════════════════════════════════════
+九、IntentTag 与工具契约（P0 规则分类，非 LLM）
+═══════════════════════════════════════════════════════════════
+
+LOCAL_KB_QA        → rag_summarize / rag_retrieve
+REALTIME_NEWS      → web_search / hybrid_* ；忌仅 rag_*
+QUOTE_SNAPSHOT     → get_stock_quote / get_stock_basics / get_stock_kline
+FIN_CALC           → compute_financial_metric / convert_currency
+MARKET_TIME        → get_market_datetime
+INVESTMENT_ADVICE  → get_market_datetime + web/hybrid
+REPORT_WRITE       → report_mode 预设；hybrid + 行情类
+CHITCHAT           → 无必选工具
+MULTI_TURN_REF     → 多轮指代时附加 constraints（常与上列组合）
+
+多标签冲突按优先级：QUOTE > INVESTMENT > REALTIME > MARKET_TIME > FIN_CALC > LOCAL_KB > CHITCHAT
+
+═══════════════════════════════════════════════════════════════
+十、P3 回归与文档（计划项 · 部分已完成）
+═══════════════════════════════════════════════════════════════
+
+已完成：tests/test_intent_guard.py、tests/test_agent_runtime.py（pytest）
+
+待扩展：tests/fixtures/tool_routing_cases.yml（15~25 条路由用例）
+        README / docs/intent_guard.md 专节
+
+═══════════════════════════════════════════════════════════════
+十一、与 rerank Instruct 的类比（笔记用）
+═══════════════════════════════════════════════════════════════
+
+rerank instruct     ：告诉精排模型「按何种相关性打分」
+IntentTag + 契约    ：告诉主模型「本轮任务类型与工具边界」（P0）
+validate + 纠正     ：检查是否照做，不对则返工一次（P1）
+recursion_limit     ：限制 ReAct 图最多走多少 superstep（P2）
+
+意图从「模型心里猜」→「契约可注入」→「行为可校验」→「违规可纠正」→「步数与工具异常可控」。
+
+
+
+

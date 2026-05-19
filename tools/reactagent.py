@@ -1,10 +1,13 @@
 from langchain.agents import create_agent
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
+from intent.intent_router import IntentContract, format_contract_message
 from model.model import chat_model
 from rag.query_expand import clear_query_expand_ui_records
 from tools.agent_tool import TOOLS
-from tools.mid_ware import middleware
+from tools.mid_ware import build_middleware
+from utils.agent_runtime import get_agent_runtime_settings
+from utils.config_hander import agent_config
 from utils.log import logger
 
 
@@ -49,6 +52,16 @@ def _build_memory_summary_message(summary_text: str | None) -> HumanMessage | No
     )
 
 
+def _build_intent_contract_message(contract: IntentContract | None) -> HumanMessage | None:
+    """将 Intent Guard 任务契约包装为辅助消息，插在历史窗口之前。"""
+    if contract is None:
+        return None
+    body = format_contract_message(contract).strip()
+    if not body:
+        return None
+    return HumanMessage(content=body)
+
+
 def _build_memory_facts_message(facts_text: str | None) -> HumanMessage | None:
     """将结构化长期记忆包装成一条辅助消息，插在历史摘要之前（Phase 2）。"""
     text = (facts_text or "").strip()
@@ -75,18 +88,33 @@ def _message_text(msg) -> str:
 
 
 class ReactAgent:
-    def __init__(self):
+    def __init__(self, runtime_config: dict | None = None):
         if chat_model is None:
             raise RuntimeError(
                 "未配置对话模型：请安装 langchain-community 并设置 DASHSCOPE_API_KEY 或 TONGYI_API_KEY。"
             )
+        settings = get_agent_runtime_settings(runtime_config or agent_config)
+        self._recursion_limit = int(settings["recursion_limit"])
+        self._max_iterations = int(settings["max_iterations"])
+        self._handle_parsing_errors = bool(settings["handle_parsing_errors"])
         self.agent = create_agent(
             chat_model,
             TOOLS,
-            middleware=middleware,
+            middleware=build_middleware(
+                handle_tool_errors=self._handle_parsing_errors
+            ),
+            name=agent_config.get("display_name") or "FinSight",
+        )
+        logger.info(
+            "ReactAgent runtime: max_iterations=%s recursion_limit=%s handle_parsing_errors=%s",
+            self._max_iterations,
+            self._recursion_limit,
+            self._handle_parsing_errors,
         )
         # 最近一次 execute 的工具调用摘要，供页面展示或调试（每个元素: name, content 预览）
         self.last_tool_calls: list[dict[str, str]] = []
+        # Intent Guard：本轮意图分类与契约追踪（P0）
+        self.last_decision_trace: dict = {}
 
     def execute(
         self,
@@ -98,6 +126,10 @@ class ReactAgent:
         memory_facts_text: str | None = None,
         log_tool_calls: bool = True,
         report_mode: bool = False,
+        intent_contract: IntentContract | None = None,
+        correction_hint: str | None = None,
+        inject_contract: bool = True,
+        log_decision_trace: bool = True,
     ):
         """流式输出：按 values 事件中最后一条 AI 消息的增量 yield 文本片段。
 
@@ -108,6 +140,8 @@ class ReactAgent:
         ``memory_summary`` 为更早历史对话的压缩摘要，会插入在最近窗口消息之前。
         ``report_mode`` 控制使用的提示词策略：True 时使用报告模式（结构化、可沉淀的回答），
         False 时使用主对话模式（常规对话）。
+        ``intent_contract`` 为 Intent Guard 生成的任务契约；``inject_contract=False`` 时仅记 trace 不注入。
+        ``correction_hint`` 为 P1 纠正轮使用的系统提示，插入在本轮用户消息之后（不写入会话历史）。
 
         判断是否调用了工具，可以：
         1. 看本方法执行后的 ``self.last_tool_calls``（本次 run 的非空表示调用过工具）；
@@ -116,6 +150,15 @@ class ReactAgent:
         3. 将 ``stream_mode`` 设为 ``\"updates\"`` 自行解析（本实现已合并 ``values`` + ``updates`` 并打点日志）。
         """
         self.last_tool_calls = []
+        self.last_decision_trace = {}
+        if intent_contract is not None:
+            self.last_decision_trace = {
+                **intent_contract.to_trace_dict(),
+                "corrected": False,
+                "violations": [],
+            }
+            if log_decision_trace:
+                logger.info("intent_guard contract: %s", self.last_decision_trace)
         clear_query_expand_ui_records()
         prev = ""
         prior = _conversation_history_to_messages(
@@ -124,16 +167,30 @@ class ReactAgent:
         )
         facts_message = _build_memory_facts_message(memory_facts_text)
         summary_message = _build_memory_summary_message(memory_summary)
+        contract_message = (
+            _build_intent_contract_message(intent_contract)
+            if inject_contract and intent_contract is not None
+            else None
+        )
+        correction_message = None
+        hint = (correction_hint or "").strip()
+        if hint:
+            correction_message = HumanMessage(
+                content=f"【系统纠正】\n{hint}",
+            )
         messages_to_send = [
             *([facts_message] if facts_message is not None else []),
             *([summary_message] if summary_message is not None else []),
+            *([contract_message] if contract_message is not None else []),
             *prior,
             HumanMessage(content=user_input),
+            *([correction_message] if correction_message is not None else []),
         ]
         stream = self.agent.stream(
             {"messages": messages_to_send},
             stream_mode=["values", "updates"],
             context={"report": report_mode},
+            config={"recursion_limit": self._recursion_limit},
         )
         try:
             for mode, event in stream:
@@ -193,6 +250,10 @@ class ReactAgent:
                     prev = text
                     yield text
         finally:
+            if self.last_decision_trace:
+                self.last_decision_trace["tool_names"] = [
+                    c.get("name", "?") for c in self.last_tool_calls
+                ]
             if log_tool_calls:
                 if not self.last_tool_calls:
                     logger.info("本轮未调用任何工具")

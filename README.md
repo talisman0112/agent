@@ -2,7 +2,7 @@
 
 > **Equity Research Copilot** —— 面向中文 A 股 / 港美股市场的投研助理 Agent。
 >
-> 基于 **LangGraph ReAct** 工具编排 · **多路混合 RAG**（本地研报库 + DuckDuckGo Web）· **Qwen3-Rerank** 精排 · **三策略上下文压缩** · **东方财富免 Key 行情/基本面** · **滚动摘要长记忆** · **Streamlit 投研主题工作台**。
+> 基于 **LangGraph ReAct** 工具编排 · **Intent Guard**（意图契约 + 后置校验 + 纠正轮）· **多路混合 RAG**（本地研报库 + DuckDuckGo Web）· **Qwen3-Rerank** 精排 · **三策略上下文压缩** · **东方财富免 Key 行情/基本面** · **滚动摘要长记忆** · **Streamlit 投研主题工作台**。
 
 [![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![LangGraph](https://img.shields.io/badge/LangGraph-ReAct-1C3C5A)](https://langchain-ai.github.io/langgraph/)
@@ -79,8 +79,8 @@ python scripts/rebuild_index.py --yes
 | 9 | `compute_financial_metric` | 财务指标 / 估值 / 同环比纯算术 |
 | 10 | `get_market_datetime` | A 股 / 港股 / 美股市场当地时间 |
 
-> 工具调用由模型按问题自主决定（非硬编码路由），description 里描述了**何时调用 / 何时不要调用**，配合 `prompts/main_prompt.txt` 投研 Copilot 角色卡引导。
-> 实现见 `tools/agent_tool.py` / `tools/finance_tool.py`。
+> 工具调用由模型按问题自主决定（非硬编码路由），description 里描述了**何时调用 / 何时不要调用**，配合 `prompts/main_prompt.txt` 投研 Copilot 角色卡引导；**Intent Guard** 在每轮提问前注入「任务契约」，事后校验是否履约，必要时最多纠正重试 1 次（见下文）。
+> 实现见 `tools/agent_tool.py` / `tools/finance_tool.py`；意图与校验见 `intent/intent_router.py`、`intent/decision_validator.py`。
 
 ### 数据语料（`data/`）
 
@@ -99,6 +99,8 @@ python scripts/rebuild_index.py --yes
 
 每次提问都会进入 **ReAct 循环**：模型根据系统提示词决定是否调用工具 → 执行工具 → 把结果作为 ToolMessage 写回对话 → 再生成回复，直到结束。流式输出仅展示 **最终助手文本的增量**，工具调用详情可在展开器中查看。
 
+在 ReAct 之外，**Intent Guard** 提供三层兜底：**P0** 规则意图分类并注入任务契约（软引导选工具）；**P1** 对照契约校验工具调用与回复，违规时最多 **1 次**纠正性 `execute`；**P2** 限制 LangGraph `recursion_limit` 并在工具执行异常时回写 `ToolMessage`，避免死循环与整轮崩溃。
+
 ### 端到端总览（合并对话 + 报告模式）
 
 ```
@@ -115,9 +117,15 @@ python scripts/rebuild_index.py --yes
               │                      └─────────────────────────┘
               ▼
 ┌──────────────────────────┐
+│  Intent Guard (P0)       │
+│  classify_intent → 契约   │
+└─────────────┬────────────┘
+              ▼
+┌──────────────────────────┐
 │     ReactAgent           │
-│ 历史 → Human/AI Message  │
-│ + 历史摘要 + 本轮问题      │
+│ facts + 摘要 + 契约 +     │
+│ 历史 + 本轮问题 (+纠正)   │
+│ P2: recursion_limit      │
 └─────────────┬────────────┘
               │
               ▼
@@ -155,9 +163,60 @@ python scripts/rebuild_index.py --yes
                       ▼
             ┌──────────────────────┐
             │ 最终 AIMessage        │
+            └──────────┬───────────┘
+                       ▼
+            ┌──────────────────────┐
+            │ Intent Guard (P1)    │
+            │ validate → 纠正轮?   │
+            └──────────┬───────────┘
+                       ▼
+            ┌──────────────────────┐
             │ Streamlit 流式展示    │
+            │ caption: 意图·校验    │
             └──────────────────────┘
 ```
+
+### Intent Guard（模型决策兜底）
+
+与 Rerank 的 **instruct** 类似：先把用户问题规范为可检查的 **IntentTag + 工具契约**，再让 ReAct 在契约内自主选工具；事后用代码对照「契约 vs 实际行为」，必要时返工一次。
+
+| 阶段 | 模块 | 作用 |
+|---|---|---|
+| **P0 事前** | `intent/intent_router.py` | `classify_intent()`：规则分类（关键词/正则/`report_mode`）→ `IntentContract`（`required_tools`、`constraints`、`query_hints`）→ 注入 `【本轮任务契约】` |
+| **P1 事后** | `intent/decision_validator.py` | `validate()`：R1 缺必选工具 · R2 禁用工具 · R3 未验证数字 · R4 时效题仅本地 RAG；违规则 `format_correction_hint()` → 第 2 轮 `execute`（`【系统纠正】` 不入会话历史） |
+| **P2 运行时** | `utils/agent_runtime.py`、`tools/mid_ware.py` | `max_iterations` → `recursion_limit`（`×2+1`）；`handle_parsing_errors` → `handle_tool_errors_middleware`（工具异常 → `ToolMessage(status=error)`） |
+
+**单轮消息顺序（`ReactAgent.execute`）**：
+
+```
+[memory_facts] → [历史摘要] → [任务契约] → [多轮 prior] → [用户 prompt] → （纠正轮）[系统纠正]
+```
+
+**主意图标签（节选）**：`QUOTE_SNAPSHOT`、`REALTIME_NEWS`、`LOCAL_KB_QA`、`INVESTMENT_ADVICE`、`REPORT_WRITE`（报告模式）、`CHITCHAT` 等。多标签冲突按优先级表取主意图（见 `intent_router.py`）。
+
+**配置**（`config/agent.yml`）：
+
+```yaml
+intent_guard:
+  enabled: true
+  inject_contract: true
+  post_validate: true
+  max_correction_rounds: 1    # 每问最多 1 次纠正 execute
+  strict_numbers: true          # false 可关闭 R3 数字正则
+
+max_iterations: 18            # → stream recursion_limit = 37
+handle_parsing_errors: true
+```
+
+**可观测**：界面 caption `意图识别：QUOTE_SNAPSHOT · 校验：通过/纠正后通过/…`；`ReactAgent.last_decision_trace`（含 `violations`、`tool_names`）；日志关键字 `intent_guard contract` / `intent_guard trace`。
+
+**测试**：
+
+```bash
+pytest tests/test_intent_guard.py tests/test_agent_runtime.py -q
+```
+
+> Intent Guard 仅作用于 **Streamlit ReAct 路径**；MCP stdio 不经过 `classify_intent` / `validate`，由宿主决定是否调用工具。
 
 当工具为 `rag_summarize` / `rag_retrieve` / `hybrid_search` / `hybrid_summarize` 时，**本地 Chroma 检索**可在 `config/rag.yml` 中开启 Query 扩展（多检索用语合并粗排）；Agent 层 ReAct 编排**不变**，仍是「选工具 → 执行 → 再推理」。
 
@@ -498,6 +557,10 @@ agent/
 │   └── parent_store.py             # 父块 SQLite 存储
 ├── memory/
 │   └── conversation_memory.py      # 最近窗口 + 滚动摘要 双层记忆
+├── intent/
+│   ├── intent_router.py            # P0：规则 classify_intent + IntentContract
+│   └── decision_validator.py       # P1：validate + 纠正 hint
+├── utils/agent_runtime.py          # P2：max_iterations → recursion_limit
 ├── model/model.py                  # ChatTongyi + DashScopeEmbeddings + Rerank
 ├── data/                           # 语料根目录（含 README 数据采集指南）
 │   ├── glossary/                   # 财经术语词典
@@ -508,6 +571,8 @@ agent/
 │   └── policy/                     # 政策原文（待用户填充）
 ├── tests/
 │   ├── golden_set.yml              # 30 题检索黄金集
+│   ├── test_intent_guard.py        # Intent Guard P0/P1 单测
+│   ├── test_agent_runtime.py       # P2 recursion_limit / 工具错误 middleware
 │   ├── test_ingestion_clean.py     # 入库前清洗单元测试
 │   └── eval_results.md             # 自动生成的评估报告
 ├── scripts/
@@ -536,8 +601,9 @@ python scripts/smoke_test_finance.py
 python scripts/eval_retrieval_metrics.py
 # 报告自动写入 tests/eval_results.md，可贴进简历或 README
 
-# 4. pytest 跑结构化分块 / 混合检索 / 上下文压缩等单元测试
+# 4. pytest（含 Intent Guard / Agent 运行时、结构化分块、混合检索等）
 pytest tests/ -q
+# 仅 Intent Guard：pytest tests/test_intent_guard.py tests/test_agent_runtime.py -q
 
 # 5. MCP stdio 冒烟（子进程启动 mcp_server.py，校验 tools/list 与若干 tools/call）
 python scripts/smoke_test_mcp.py
@@ -559,9 +625,9 @@ python -m pytest tests/test_ingestion_clean.py -v
 |---|---|
 | `config/rag.yml` | 对话模型、embedding、Rerank、Hybrid 检索、上下文压缩 |
 | `config/chrome.yml` | Chroma 路径、集合名、`k`、分块、结构化分块、`ingestion_clean` 清洗项 |
-| `config/agent.yml` | Agent 迭代上限、长记忆参数 |
+| `config/agent.yml` | `max_iterations` / `recursion_limit`、`handle_parsing_errors`、`intent_guard`（契约注入 / 后置校验 / 纠正轮）、长记忆参数 |
 | `config/prompts.yml` | 提示词路径（指向 `prompts/*.txt`） |
-| `log/agent.log` | 模型 / 工具调用轨迹（与 `ReactAgent.log_tool_calls` 配合） |
+| `log/agent.log` | 模型 / 工具调用轨迹；Intent Guard 含 `intent_guard contract` / `intent_guard trace` |
 
 ---
 
@@ -577,26 +643,50 @@ python -m pytest tests/test_ingestion_clean.py -v
 
 ## 简历项目段（可直接复制）
 
-**一页纸建议**：项目名称 + 时间 + 技术栈占一行；下列 4～5 条按岗位取舍（算法岗强调 RAG/评测，工程岗强调 Agent/MCP/流水线）。
+**一页纸建议**：**项目名称 + 时间** 占一行；**业务介绍** 一段写清场景、对象、痛点与产品形态（价值语言为主，栈名放到技术栈）；**业务目标** 一段写「在业务上要达成什么」；其后用分点写 **能力/实现 → 带来的便利与优势**（括号可补技术要点）；**技术栈** 一行；**项目效果** 一段写量化结果并点到**支撑技术**（忌照搬正文长链路）。更细的测试与链路见正文与 [`tests/eval_results.md`](tests/eval_results.md)。
 
 ```text
-FinSight · 中文投研 Copilot Agent（个人项目｜2026.04 – 至今）
-技术栈：Python 3.10+ · LangChain / LangGraph（ReAct）· Streamlit · Chroma · DashScope（Qwen 对话 / Embedding / Qwen3-Rerank）
+FinSight · 中文投研 Copilot（个人项目｜2026.04 – 至今）
 
-• 搭建面向 A 股/港美股的 LangGraph ReAct Agent：以模型语义决策路由 10 个领域工具（本地与混合 RAG、DuckDuckGo、
-  行情/基本面快照、汇率换算、财务指标纯算术等），middleware 在对话模式与「个股/行业/晨会」三类报告模板间切换，
-  Streamlit 侧流式展示最终回复。
-• RAG 链路：财经语料章节感知结构化分块 + Parent-Child 向量检索；精排采用 Qwen3-Rerank，叠加分数阈值、
-  近文本去重与 Instruct 模式。自建 30 题检索黄金集上 Recall@5=100%、MRR=1.0；在召回饱和前提下将送入总结的
-  上下文由约 947 tokens 压至约 429（−54.7%），直接降低上游 LLM 成本。支持可配置 Query 扩展/子问题分解，
-  以延迟换检索广度。
-• Hybrid 设计：本地向量召回与 Web 结果汇入同一候选池后只跑一次 Rerank，规避双源分别加权带来的偏置；
-  链尾按 query 特征自动路由 extract / summarize / hybrid 上下文压缩，短文档按需跳过避免过压。
-• 长对话记忆：滚动摘要 + 固定近期窗口；扩展阶段由 LLM 维护 JSON 结构化长期事实（用户偏好、任务目标等），
-  在轮次与 token 阈值触发下合并更新，平衡连贯性与上下文预算。
-• 工程化落地：多格式文档入库 + MD5 增量跳过与可配置的 ingestion 清洗；东方财富 push2 行情/基本面封装
-  （多市场 ticker、指数退避重试、进程内 TTL 缓存防抖）。另实现 MCP stdio Server，将核心 RAG 工具暴露给
-  Cursor / Claude Desktop 等客户端；配套检索三档对照评估脚本、RAG/金融/MCP 冒烟测试与 pytest 回归。
+业务介绍：面向 A 股/港美股 **投研、路演材料、晨会准备** 等需要快速对齐事实与对外表述的场景，典型对象含分析师、
+  研究支持及需与投研同口径协作的角色。工作常态下，内部材料、公开资讯、行情与基本面散落在文档、网页与终端里，
+  **检索、拼接、核对出处**占用大量时间。本产品以 **对话式投研工作台** 把「找资料—对事实—出初稿」收敛到单一入口：
+  先做可回溯来源的问答与要点归纳，再按需补上行情/基本面快照，并落到速评、纪要等常用模板；能力也可接到既有写作
+  与协作环境里复用，少在多个工具间来回切换。
+
+业务目标：在业务上要达成三件事——一是产出**可直接打磨分发**的材料（带引用依据的问答、结构化简报初稿），缩短从腹稿到成稿路径；
+  二是在同一主题上**对齐口径与出处**，减少事后扯皮与返工；三是把「内部话术与框架—公开信息补全—实时行情口径」连起来用，
+  降低只信单一来源造成的片面或遗漏。
+
+能力与收益（实现 ▸ 便利 / 优势）：
+
+• 本地投研知识库问答（RAG retrieve / summarize）：术语百科、行业知识及可扩展研报/公告/政策等，回答可带引用片段。
+  ▸ **便利**：内部口径与常用表述「一问即有」，少在文件夹与站内搜索间翻找；**优势**：结论带来源片段，便于自查、留痕与和他人对齐口径，新人更快贴近团队话术。
+
+• 混合检索与归纳（hybrid_search / hybrid_summarize）：自有库与联网公开信息合并精排后再生成结论。
+  ▸ **便利**：少「先搜网页再贴进对话框」的往返；**优势**：缓解库里未覆盖或时效不足时的断档，本地与公开信息在同一排序与总结链路里收口，口径更一致。
+
+• 多市场行情与基本面（东财 push2 封装；多市场 ticker、缓存与重试）：现价、涨跌成交与估值/规模/流动性等快照。
+  ▸ **便利**：写速评、纪要时可随问答拉取行情/基本面口径；**优势**：少切行情终端手抄数字、少因偶发接口失败反复点选（内置重试与缓存）。
+
+• 结构化报告输出（个股/行业速评与晨会纪要模板；对话与报告模式切换；Streamlit 流式输出）。
+  ▸ **便利**：从材料到「可打磨初稿」路径更短；**优势**：模板约束结构、流式输出便于边出字边改，贴近真实写稿节奏。
+
+• 长会话连贯（近期窗口 + 滚动摘要；扩展层 LLM 维护 JSON 结构化长期事实，按轮次与 token 阈值合并更新）。
+  ▸ **便利**：多轮追问少重复交代背景；**优势**：长会前准备或连续改稿时，已确认事实与偏好可延续，减少上下文「失忆」造成的返工。
+
+• 语料沉淀与对外能力（多格式入库、MD5 增量跳过与可配置 ingestion 清洗；工作台上传与向量化；MCP 暴露 Cursor / Claude Desktop）。
+  ▸ **便利**：资料增量更新成本低、可跳过未变文件；**优势**：核心检索与总结能力可嵌入既有 IDE/桌面助手工作流，少为同一能力维护多套入口（更细评测与测试见仓库）。
+
+技术栈：Python 3.10+ · LangChain / LangGraph（ReAct）· Streamlit · Chroma · DashScope（Qwen 对话 / Embedding / Qwen3-Rerank）
+  · DuckDuckGo（Web）· MCP（stdio）
+
+项目效果：自建 30 题投研向黄金集上 Recall@5=100%、MRR=1.0；粗排侧为章节感知的结构化分块 + Parent-Child
+  向量检索（可选 Query 扩展 / 子问题分解换检索广度），精排侧为 Qwen3-Rerank（分数阈值、近文本去重、Instruct）。
+  Hybrid 将本地召回与 DuckDuckGo Web 并入**同一候选池后只跑一次**精排，减轻双源分别加权偏置；链尾按查询特点
+  路由 extract / summarize / hybrid 上下文压缩，短文档跳过避免过压。上述组合在召回不降级前提下，将送入总结的
+  参考篇幅从平均约 947 tokens 压至约 429（−54.7%），利于压低上游 LLM 成本。报告场景下由 LangGraph ReAct 自主
+  多步编排行情/基本面/混合检索等工具（middleware 切换报告提示词），贴近真实出初稿流程。
 
 GitHub: <你的仓库>    Demo: <可选链接>
 ```

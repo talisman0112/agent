@@ -18,9 +18,16 @@ from rag.query_expand import (
     reset_ui_query_expand_force_off,
     take_query_expand_ui_records,
 )
+from intent.decision_validator import (
+    format_correction_hint,
+    validate,
+    validation_status_label,
+)
+from intent.intent_router import classify_intent
 from tools.agent_tool import TOOLS
 from tools.reactagent import ReactAgent
 from utils.config_hander import agent_config, chroma_config, rerank_config
+from utils.log import logger
 from utils.file_hander import get_file_md5
 from utils.path_pool import get_abs_path
 
@@ -620,19 +627,115 @@ if prompt:
                 expand_off_token = None
                 if not st.session_state.get("query_expand_user_enabled", True):
                     expand_off_token = push_ui_query_expand_force_off()
-                try:
-                    stream = st.session_state.agent.execute(
+                guard_cfg = agent_config.get("intent_guard") or {}
+                intent_contract = None
+                if guard_cfg.get("enabled"):
+                    intent_contract = classify_intent(
                         prompt,
-                        conversation_history=history,
-                        short_term_turns=memory_manager.recent_turns,
-                        memory_summary=st.session_state.conversation_summary.get("summary_text", ""),
-                        memory_facts_text=memory_facts_text or None,
+                        history,
+                        st.session_state.memory_facts,
                         report_mode=report_mode,
                     )
-                    full = st.write_stream(stream)
+                try:
+                    execute_common = dict(
+                        conversation_history=history,
+                        short_term_turns=memory_manager.recent_turns,
+                        memory_summary=st.session_state.conversation_summary.get(
+                            "summary_text", ""
+                        ),
+                        memory_facts_text=memory_facts_text or None,
+                        report_mode=report_mode,
+                        intent_contract=intent_contract,
+                        inject_contract=bool(guard_cfg.get("inject_contract", True)),
+                        log_decision_trace=bool(
+                            guard_cfg.get("log_decision_trace", True)
+                        ),
+                    )
+
+                    def _run_agent(*, correction_hint: str | None = None):
+                        return st.session_state.agent.execute(
+                            prompt,
+                            correction_hint=correction_hint,
+                            **execute_common,
+                        )
+
+                    full = st.write_stream(_run_agent())
+                    assistant_reply = (
+                        full if isinstance(full, str) else "".join(full or [])
+                    )
+                    calls = getattr(st.session_state.agent, "last_tool_calls", None) or []
+
+                    violations = []
+                    corrected = False
+                    if (
+                        guard_cfg.get("post_validate")
+                        and intent_contract is not None
+                    ):
+                        violations = validate(
+                            intent_contract,
+                            calls,
+                            assistant_reply,
+                            strict_numbers=bool(
+                                guard_cfg.get("strict_numbers", True)
+                            ),
+                        )
+                        max_corr = int(guard_cfg.get("max_correction_rounds", 1))
+                        if violations and max_corr > 0:
+                            hint = format_correction_hint(
+                                violations, intent_contract
+                            )
+                            with st.spinner("意图校验未通过，正在纠正重试…"):
+                                full = st.write_stream(
+                                    _run_agent(correction_hint=hint)
+                                )
+                            assistant_reply = (
+                                full
+                                if isinstance(full, str)
+                                else "".join(full or [])
+                            )
+                            calls = (
+                                getattr(
+                                    st.session_state.agent,
+                                    "last_tool_calls",
+                                    None,
+                                )
+                                or []
+                            )
+                            corrected = True
+                            violations = validate(
+                                intent_contract,
+                                calls,
+                                assistant_reply,
+                                strict_numbers=bool(
+                                    guard_cfg.get("strict_numbers", True)
+                                ),
+                            )
+
+                    trace = (
+                        getattr(st.session_state.agent, "last_decision_trace", None)
+                        or {}
+                    )
+                    if intent_contract is not None:
+                        trace["violations"] = [v.value for v in violations]
+                        trace["corrected"] = corrected
+                        trace["validation"] = validation_status_label(
+                            violations, corrected=corrected
+                        )
+                        st.session_state.agent.last_decision_trace = trace
+                        logger.info("intent_guard trace: %s", trace)
                 finally:
                     if expand_off_token is not None:
                         reset_ui_query_expand_force_off(expand_off_token)
+                trace = getattr(st.session_state.agent, "last_decision_trace", None) or {}
+                if trace.get("intent"):
+                    intent_label = trace.get("intent", "")
+                    val_label = trace.get("validation")
+                    if val_label:
+                        st.caption(
+                            f"意图识别：`{intent_label}` · 校验：{val_label}"
+                        )
+                    else:
+                        st.caption(f"意图识别：`{intent_label}`")
                 calls = getattr(st.session_state.agent, "last_tool_calls", None) or []
                 if calls:
                     with st.expander(
@@ -662,7 +765,6 @@ if prompt:
                             for j, sq in enumerate(rec.search_queries, 1):
                                 disp = sq if len(sq) <= 400 else sq[:399] + "…"
                                 st.text(f"{j}. {disp}")
-                assistant_reply = full if isinstance(full, str) else "".join(full)
             except Exception as e:
                 error_msg = str(e).lower()
                 if "timeout" in error_msg or "timed out" in error_msg:

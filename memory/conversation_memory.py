@@ -1,4 +1,12 @@
-"""长对话记忆管理：最近窗口 + 滚动摘要（Phase 1）+ 结构化事实（Phase 2）。"""
+"""长对话记忆管理。
+
+职责概览：
+- Phase 1：用「最近若干轮」保留细节，对其余历史做滚动文本摘要。
+- Phase 2：在摘要更新时可选地抽取并合并结构化长期事实（用户画像与任务状态）。
+
+典型用法：`ConversationMemoryManager` 维护 `summary_state` / `memory_facts`，
+配合 `should_compact` → `update_summary` → `extract_facts` 驱动增量压缩。
+"""
 
 from __future__ import annotations
 
@@ -12,12 +20,14 @@ from langchain_core.messages import HumanMessage
 from utils.log import logger
 
 
+# 滚动摘要与会话状态中持久化的字段默认值。
 DEFAULT_SUMMARY_STATE = {
     "summary_text": "",
     "covered_message_count": 0,
     "last_update_turn": 0,
 }
 
+# Phase 2：结构化长期记忆的默认骨架；抽取结果合并到此结构中。
 DEFAULT_MEMORY_FACTS = {
     "user_profile": {
         "name": None,
@@ -35,36 +45,51 @@ DEFAULT_MEMORY_FACTS = {
 
 
 class ConversationMemoryManager:
-    """管理长对话的摘要记忆。
+    """管理长对话的摘要与结构化记忆。
 
     Phase 1：
-    1. 最近窗口 recent window
-    2. 滚动摘要 rolling summary
+    1. 最近窗口：保留末尾若干轮原始对话；
+    2. 滚动摘要：更早内容由文本摘要承接。
 
     Phase 2：
-    3. 结构化长期事实 memory_facts（摘要更新时抽取并合并）
+    3. 结构化长期事实 memory_facts：摘要更新时可抽取并合并用户画像与任务状态。
     """
 
     def __init__(self, llm=None, config: dict[str, Any] | None = None):
+        """初始化管理器。
+
+        Args:
+            llm: 可选 LangChain 兼容模型；为 None 时摘要与事实抽取走规则/降级路径。
+            config: 可含 recent_turns、summary_trigger_turns、summary_increment_turns、
+                max_history_tokens_before_summary、summary_max_chars、
+                memory_facts_enabled、memory_facts_max_chars 等整型/布尔配置。
+        """
         self.llm = llm
         self.config = config or {}
+        # 末尾保留的「轮」数（每轮大致 user+assistant 两条）。
         self.recent_turns = int(self.config.get("recent_turns", 6))
+        # 尚无摘要时：总轮数达到此值则触发首次摘要。
         self.summary_trigger_turns = int(self.config.get("summary_trigger_turns", 12))
+        # 已有摘要后：旧段中又积累这么多轮未摘要则再次压缩。
         self.summary_increment_turns = int(self.config.get("summary_increment_turns", 4))
+        # 历史过长时强制触发摘要（与轮数条件为或关系）。
         self.max_history_tokens_before_summary = int(
             self.config.get("max_history_tokens_before_summary", 3000)
         )
         self.summary_max_chars = int(self.config.get("summary_max_chars", 1200))
         self.memory_facts_enabled = bool(self.config.get("memory_facts_enabled", True))
+        # 注入提示中的长期记忆块最大字符数，防止撑爆上下文。
         self.memory_facts_max_chars = int(self.config.get("memory_facts_max_chars", 800))
 
     def init_summary_state(self, state: dict[str, Any] | None = None) -> dict[str, Any]:
+        """返回带默认值的摘要状态；若传入 state 则在其上浅层合并已有键。"""
         base = deepcopy(DEFAULT_SUMMARY_STATE)
         if state:
             base.update(state)
         return base
 
     def init_memory_facts(self, state: dict[str, Any] | None = None) -> dict[str, Any]:
+        """规范化并深拷贝默认事实结构；从 state 中安全合并 user_profile / task_state。"""
         base: dict[str, Any] = deepcopy(DEFAULT_MEMORY_FACTS)
         if not state:
             return base
@@ -90,6 +115,7 @@ class ConversationMemoryManager:
         return base
 
     def normalize_history(self, conversation_history: list[dict] | None) -> list[dict[str, str]]:
+        """过滤并规范历史：仅保留 user/assistant 且非空 content 的条目。"""
         if not conversation_history:
             return []
         out: list[dict[str, str]] = []
@@ -102,11 +128,13 @@ class ConversationMemoryManager:
         return out
 
     def estimate_tokens(self, conversation_history: list[dict] | None) -> int:
+        """粗略估算历史 token 数（按「字符数 / 2」启发式，非严格分词）。"""
         history = self.normalize_history(conversation_history)
         total_chars = sum(len(item["content"]) for item in history)
         return total_chars // 2
 
     def estimate_turns(self, conversation_history: list[dict] | None) -> int:
+        """估算「轮次」：优先用 user 条数；若无 user 则用消息数 // 2 近似。"""
         history = self.normalize_history(conversation_history)
         user_count = sum(1 for item in history if item["role"] == "user")
         if user_count:
@@ -114,6 +142,7 @@ class ConversationMemoryManager:
         return len(history) // 2
 
     def get_recent_messages(self, conversation_history: list[dict] | None) -> list[dict[str, str]]:
+        """取最近窗口内的消息（最多 recent_turns 个「来回」，即 recent_turns * 2 条）。"""
         history = self.normalize_history(conversation_history)
         if self.recent_turns <= 0:
             return history
@@ -121,6 +150,7 @@ class ConversationMemoryManager:
         return history[-limit:] if len(history) > limit else history
 
     def get_messages_for_summary(self, conversation_history: list[dict] | None) -> list[dict[str, str]]:
+        """取「应被摘要消化」的旧消息：窗口之前的部分；窗口内或更短则返回空列表。"""
         history = self.normalize_history(conversation_history)
         if self.recent_turns <= 0:
             return []
@@ -134,6 +164,7 @@ class ConversationMemoryManager:
         conversation_history: list[dict] | None,
         summary_state: dict[str, Any] | None,
     ) -> bool:
+        """判断当前是否应触发摘要更新：存在未覆盖旧段，且满足轮次/ token 阈值。"""
         history = self.normalize_history(conversation_history)
         summary_state = self.init_summary_state(summary_state)
         if not history:
@@ -145,8 +176,9 @@ class ConversationMemoryManager:
 
         total_turns = self.estimate_turns(history)
         estimated_tokens = self.estimate_tokens(history)
+        # covered：摘要已覆盖 old_messages 前缀多长（按消息条数计）。
         covered = min(summary_state.get("covered_message_count", 0), len(old_messages))
-        unsummarized = old_messages[covered:]
+        unsummarized = old_messages[covered:]  # 仍未写入摘要的旧段
         if not unsummarized:
             return False
 
@@ -168,6 +200,7 @@ class ConversationMemoryManager:
         conversation_history: list[dict] | None,
         summary_state: dict[str, Any] | None,
     ) -> dict[str, Any]:
+        """将尚未纳入摘要的旧消息压缩进 summary_text，并更新 covered_message_count 等字段。"""
         history = self.normalize_history(conversation_history)
         summary_state = self.init_summary_state(summary_state)
         old_messages = self.get_messages_for_summary(history)
@@ -175,7 +208,7 @@ class ConversationMemoryManager:
             return summary_state
 
         covered = min(summary_state.get("covered_message_count", 0), len(old_messages))
-        new_old_messages = old_messages[covered:]
+        new_old_messages = old_messages[covered:]  # 本轮需要并入摘要的旧消息切片
         if not new_old_messages:
             return summary_state
 
@@ -194,6 +227,7 @@ class ConversationMemoryManager:
         return updated
 
     def build_summary_message(self, summary_state: dict[str, Any] | None) -> HumanMessage | None:
+        """若存在摘要文本，封装为一条 HumanMessage，供模型上下文使用；否则返回 None。"""
         summary_state = self.init_summary_state(summary_state)
         summary_text = (summary_state.get("summary_text") or "").strip()
         if not summary_text:
@@ -249,6 +283,7 @@ class ConversationMemoryManager:
         return text
 
     def build_memory_facts_message(self, memory_facts: dict[str, Any] | None) -> HumanMessage | None:
+        """将结构化事实格式化为可读文本后封装为 HumanMessage；无内容时返回 None。"""
         text = self.format_memory_facts_text(memory_facts)
         if not text:
             return None
@@ -274,9 +309,9 @@ class ConversationMemoryManager:
         if self.llm is None:
             return previous
 
-        excerpt = self._render_history(old_messages_excerpt[-50:])
+        excerpt = self._render_history(old_messages_excerpt[-50:])  # 最多 50 条，供与摘要对齐
         if len(excerpt) > 6000:
-            excerpt = excerpt[-6000:]
+            excerpt = excerpt[-6000:]  # 控制提示长度，保留尾部更近内容
 
         prompt = self._build_extract_facts_prompt(previous, summary_text, excerpt)
         try:
@@ -298,6 +333,7 @@ class ConversationMemoryManager:
         summary_text: str,
         old_excerpt: str,
     ) -> str:
+        """构造让 LLM 输出合并后 JSON 事实的提示词。"""
         prev_json = json.dumps(previous_facts, ensure_ascii=False, indent=2)
         excerpt_block = old_excerpt.strip() or "（无单独摘录，请仅依据摘要与已有事实推断）"
         return f"""你是会话长期记忆整理助手。请在「已有结构化记忆」基础上，结合「滚动摘要」与「较早对话摘录」更新事实。
@@ -335,6 +371,7 @@ class ConversationMemoryManager:
 请输出合并后的完整 JSON。"""
 
     def _parse_json_object(self, text: str) -> dict[str, Any] | None:
+        """从模型原文中解析 JSON 对象：支持去 markdown 围栏与截取首尾大括号。"""
         text = (text or "").strip()
         if not text:
             return None
@@ -361,6 +398,7 @@ class ConversationMemoryManager:
         previous: dict[str, Any],
         parsed: dict[str, Any],
     ) -> dict[str, Any]:
+        """校验 LLM 返回结构，将新事实与 previous 做列表拼接与去重（带条数上限）。"""
         base = self.init_memory_facts(previous)
         up = parsed.get("user_profile") if isinstance(parsed.get("user_profile"), dict) else {}
         ts = parsed.get("task_state") if isinstance(parsed.get("task_state"), dict) else {}
@@ -388,6 +426,7 @@ class ConversationMemoryManager:
         return base
 
     def _facts_has_content(self, facts: dict[str, Any]) -> bool:
+        """判断结构化事实是否含任意非空字段，用于决定是否生成记忆消息。"""
         up = facts.get("user_profile") or {}
         ts = facts.get("task_state") or {}
         if up.get("name") or up.get("language"):
@@ -403,6 +442,7 @@ class ConversationMemoryManager:
 
     @staticmethod
     def _dedupe_str_list(items: list[str]) -> list[str]:
+        """字符串列表按首次出现顺序去重。"""
         seen: set[str] = set()
         out: list[str] = []
         for x in items:
@@ -412,6 +452,7 @@ class ConversationMemoryManager:
         return out
 
     def _summarize(self, previous_summary: str, new_old_messages: list[dict[str, str]]) -> str:
+        """调用 LLM 生成滚动摘要；失败或无模型时退回 `_fallback_summary`。"""
         history_text = self._render_history(new_old_messages)
         if self.llm is not None:
             prompt = self._build_summary_prompt(previous_summary, history_text)
@@ -427,6 +468,7 @@ class ConversationMemoryManager:
         return self._fallback_summary(previous_summary, new_old_messages)
 
     def _build_summary_prompt(self, previous_summary: str, history_text: str) -> str:
+        """构造「已有摘要 + 新增历史」的压缩摘要提示词。"""
         previous_block = previous_summary or "（暂无历史摘要）"
         return f"""请将以下历史对话压缩为后续多轮对话可复用的记忆摘要。
 
@@ -453,6 +495,7 @@ class ConversationMemoryManager:
 请输出简洁、结构化的要点摘要，总长度控制在 {self.summary_max_chars} 字符以内。"""
 
     def _render_history(self, messages: list[dict[str, str]]) -> str:
+        """将 role/content 列表渲染为「用户/助手」前缀的多行文本。"""
         lines = []
         for item in messages:
             role = "用户" if item["role"] == "user" else "助手"
@@ -460,6 +503,7 @@ class ConversationMemoryManager:
         return "\n".join(lines)
 
     def _fallback_summary(self, previous_summary: str, new_old_messages: list[dict[str, str]]) -> str:
+        """无 LLM 时的规则摘要：拼接旧摘要与最近若干条消息的截断要点。"""
         lines: list[str] = []
         if previous_summary:
             lines.append("已有摘要：")
