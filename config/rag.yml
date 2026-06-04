@@ -30,11 +30,11 @@ rerank_search_k: 20
 # rerank_enhanced: 是否使用增强版 Rerank（含阈值过滤、指令引导、混合打分）
 rerank_enhanced: true
 # rerank_score_threshold: 分数阈值（0-1），低于此值的文档会被过滤
-rerank_score_threshold: 0.25
+rerank_score_threshold: 0.20
 
 # rerank_dedup_threshold: 去重相似度阈值（0-1），超过此值认为是重复文档，默认0.70
 # 值越小越严格（更容易判定为重复），建议范围 0.60-0.85
-rerank_dedup_threshold: 0.70
+rerank_dedup_threshold: 0.65
 
 
 # rerank_instruct_mode: 预设 instruct 模式

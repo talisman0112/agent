@@ -214,6 +214,12 @@ class RAGSummarize:
     def summarize(self, query: str) -> str:
         return self.chain.invoke(query)
 
+    def summarize_with_docs(self, query: str, docs: list[Document]) -> str:
+        """??????? docs ?????????????"""
+        formatted = _format_docs(docs)
+        inputs = {"context": formatted, "question": query}
+        return (self.prompt_template | self.rag_model | StrOutputParser()).invoke(inputs)
+
 
 class HybridRAG:
     """多路召回 RAG：Web 搜索 + 本地知识库 + 统一 Rerank + 上下文压缩
@@ -470,4 +476,10 @@ class HybridRAG:
     def summarize(self, query: str) -> str:
         """多路召回 RAG 问答"""
         return self.chain.invoke(query)
+
+    def summarize_with_docs(self, query: str, docs: list[Document]) -> str:
+        """??????? docs ?????????????"""
+        formatted = _format_docs(docs)
+        inputs = {"context": formatted, "question": query}
+        return (self.prompt_template | self.rag_model | StrOutputParser()).invoke(inputs)
 

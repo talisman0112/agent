@@ -1,196 +1,391 @@
-# FinSight 检索黄金集 · v1（30 题）
-#
-# 用法：被 scripts/eval_retrieval_metrics.py 加载，对照 RAG 各档配置评估
-# Recall@K / Precision@K / MRR / 平均压缩率 / 延迟 P50P95。
-#
-# 字段约定：
-#   id              : 题号（q01 ~ q30）
-#   question        : 输入查询（用户原话，已尽量贴近真实问法）
-#   expected_docs   : 应当命中的源文件 basename 列表；命中其中任一即视为相关
-#   expected_keywords: 兜底关键词（任一出现即视为命中）；当 source 元数据缺失时使用
-#   category        : 题目类别，便于分组统计
-#
-# 设计原则：
-#   - 每个语料文件至少 3 道题，覆盖文件主体内容；
-#   - 题目难度梯度：简单（直接复述）→ 中等（跨章节理解）→ 困难（需多文件交叉）；
-#   - 题目语气模拟用户口语化提问，包括"是什么"、"怎么算"、"对比"、"列举"等。
-
 - id: q01
   category: glossary
-  question: "什么是市盈率 PE？怎么计算？"
-  expected_docs: [financial_terms.md, valuation_methods.md]
-  expected_keywords: [每股收益, 市盈率, PE]
-
+  question: 什么是市盈率 PE？怎么计算？
+  expected_docs:
+  - financial_terms.md
+  - valuation_methods.md
+  expected_keywords:
+  - 每股收益
+  - 市盈率
+  - PE
+  reference: 市盈率（PE）是股价与每股收益（EPS）的比值，计算公式为 PE = 股价 / EPS，用于衡量投资者愿意为每单位盈利支付的价格。
 - id: q02
   category: glossary
-  question: "ROE 怎么用杜邦分析拆解？"
-  expected_docs: [financial_terms.md]
-  expected_keywords: [杜邦, 销售净利率, 资产周转率, 权益乘数]
-
+  question: ROE 怎么用杜邦分析拆解？
+  expected_docs:
+  - financial_terms.md
+  expected_keywords:
+  - 杜邦
+  - 销售净利率
+  - 资产周转率
+  - 权益乘数
+  reference: ROE 可通过杜邦分析拆解为：ROE = 净利润率 × 总资产周转率 × 权益乘数，分别反映盈利能力、运营效率和财务杠杆。
 - id: q03
   category: glossary
-  question: "自由现金流 FCF 是什么意思？怎么算？"
-  expected_docs: [financial_terms.md]
-  expected_keywords: [自由现金流, 经营活动现金流, 资本支出]
-
+  question: 自由现金流 FCF 是什么意思？怎么算？
+  expected_docs:
+  - financial_terms.md
+  expected_keywords:
+  - 自由现金流
+  - 经营活动现金流
+  - 资本支出
+  reference: 自由现金流（FCF）指企业经营活动产生的、在满足必要资本支出后可自由支配的现金，通常计算为 FCF = 经营活动现金流净额 - 资本性支出。
 - id: q04
   category: glossary
-  question: "PEG 这个指标多少算合理？"
-  expected_docs: [financial_terms.md, valuation_methods.md]
-  expected_keywords: [PEG, 增长率]
-
+  question: PEG 这个指标多少算合理？
+  expected_docs:
+  - financial_terms.md
+  - valuation_methods.md
+  expected_keywords:
+  - PEG
+  - 增长率
+  reference: PEG（市盈率相对盈利增长比率）一般认为在 1 左右较合理；显著低于 1 可能被低估，高于 1 可能高估，但需结合行业和增长质量判断。
 - id: q05
   category: glossary
-  question: "什么是商誉？为什么会引发业绩雷？"
-  expected_docs: [financial_terms.md]
-  expected_keywords: [商誉, 减值, 并购]
-
+  question: 什么是商誉？为什么会引发业绩雷？
+  expected_docs:
+  - financial_terms.md
+  expected_keywords:
+  - 商誉
+  - 减值
+  - 并购
+  reference: 商誉是企业并购时支付对价超过被收购方可辨认净资产公允价值的部分；若被收购方业绩不达预期，需计提商誉减值，直接冲击利润，引发“业绩雷”。
 - id: q06
   category: glossary
-  question: "股息率高的标的一般出现在什么行业？"
-  expected_docs: [financial_terms.md]
-  expected_keywords: [股息率, 公用事业, 银行]
-
+  question: 股息率高的标的一般出现在什么行业？
+  expected_docs:
+  - financial_terms.md
+  expected_keywords:
+  - 股息率
+  - 公用事业
+  - 银行
+  reference: 股息率高的标的多出现在成熟稳定、现金流充裕的行业，如银行、公用事业、电信、能源和部分消费类企业。
 - id: q07
   category: glossary
-  question: "A 股、港股、美股的交易制度有哪些差异？"
-  expected_docs: [financial_terms.md]
-  expected_keywords: [T+1, 涨跌停, 熔断]
-
+  question: A 股、港股、美股的交易制度有哪些差异？
+  expected_docs:
+  - financial_terms.md
+  expected_keywords:
+  - T+1
+  - 涨跌停
+  - 熔断
+  reference: A股实行T+1交易、涨跌幅限制（主板10%，科创板/创业板20%）；港股无涨跌幅限制、T+0回转交易；美股T+0（部分账户）、无涨跌幅限制、支持盘前盘后交易。
 - id: q08
   category: valuation
-  question: "DCF 估值有哪些核心假设？"
-  expected_docs: [valuation_methods.md]
-  expected_keywords: [WACC, 永续, 自由现金流]
-
+  question: DCF 估值有哪些核心假设？
+  expected_docs:
+  - valuation_methods.md
+  expected_keywords:
+  - WACC
+  - 永续
+  - 自由现金流
+  reference: DCF估值核心假设包括：未来自由现金流预测、永续增长率（g）和折现率（通常用WACC），三者对估值结果高度敏感。
 - id: q09
   category: valuation
-  question: "EV/EBITDA 适合什么样的行业？"
-  expected_docs: [valuation_methods.md]
-  expected_keywords: [EV, EBITDA, 资本结构]
-
+  question: EV/EBITDA 适合什么样的行业？
+  expected_docs:
+  - valuation_methods.md
+  expected_keywords:
+  - EV
+  - EBITDA
+  - 资本结构
+  reference: EV/EBITDA适用于资本密集、折旧摊销大或存在大量非现金费用的行业，如电信、能源、航空、重工业等，便于跨公司比较。
 - id: q10
   category: valuation
-  question: "银行股一般用什么估值方法？"
-  expected_docs: [valuation_methods.md]
-  expected_keywords: [PB, DDM, 银行]
-
+  question: 银行股一般用什么估值方法？
+  expected_docs:
+  - valuation_methods.md
+  expected_keywords:
+  - PB
+  - DDM
+  - 银行
+  reference: 银行股常用PB（市净率）估值，因净利润受会计准则和拨备影响较大，而净资产相对稳定，更能反映其资产质量和杠杆特性。
 - id: q11
   category: valuation
-  question: "估值时常见的错误有哪些？"
-  expected_docs: [valuation_methods.md]
-  expected_keywords: [可比公司, 永续增长, EPS]
-
+  question: 估值时常见的错误有哪些？
+  expected_docs:
+  - valuation_methods.md
+  expected_keywords:
+  - 可比公司
+  - 永续增长
+  - EPS
+  reference: 常见估值错误包括：过度依赖单一指标、忽略行业周期、使用历史数据外推未来、未调整非经常性损益、忽视资本结构差异等。
 - id: q12
   category: statements
-  question: "合同负债代表什么？为什么是收入领先指标？"
-  expected_docs: [financial_statements.md]
-  expected_keywords: [合同负债, 预收, 收入]
-
+  question: 合同负债代表什么？为什么是收入领先指标？
+  expected_docs:
+  - financial_statements.md
+  expected_keywords:
+  - 合同负债
+  - 预收
+  - 收入
+  reference: 合同负债是企业已收或应收客户款项但尚未履行履约义务的负债，在新收入准则下替代“预收账款”；因其代表未来需确认的收入，被视为收入领先指标。
 - id: q13
   category: statements
-  question: "现金流量表里的 CFO、CFI、CFF 分别是什么？"
-  expected_docs: [financial_statements.md]
-  expected_keywords: [经营活动, 投资活动, 筹资活动]
-
+  question: 现金流量表里的 CFO、CFI、CFF 分别是什么？
+  expected_docs:
+  - financial_statements.md
+  expected_keywords:
+  - 经营活动
+  - 投资活动
+  - 筹资活动
+  reference: CFO（经营活动现金流）、CFI（投资活动现金流）、CFF（筹资活动现金流）分别反映企业主业造血能力、资本开支/投资回收情况及融资与分红行为。
 - id: q14
   category: statements
-  question: "扣非归母净利润和归母净利润有什么区别？"
-  expected_docs: [financial_statements.md]
-  expected_keywords: [扣非, 非经常性, 政府补助]
-
+  question: 扣非归母净利润和归母净利润有什么区别？
+  expected_docs:
+  - financial_statements.md
+  expected_keywords:
+  - 扣非
+  - 非经常性
+  - 政府补助
+  reference: 归母净利润包含所有归属于母公司股东的利润（含非经常性损益），扣非归母净利润则剔除一次性或非主营收益，更真实反映持续经营能力。
 - id: q15
   category: statements
-  question: "三表勾稽关系是什么意思？怎么验证财务真伪？"
-  expected_docs: [financial_statements.md]
-  expected_keywords: [勾稽, 净利润, 现金流]
-
+  question: 三表勾稽关系是什么意思？怎么验证财务真伪？
+  expected_docs:
+  - financial_statements.md
+  expected_keywords:
+  - 勾稽
+  - 净利润
+  - 现金流
+  reference: 三表勾稽指资产负债表、利润表、现金流量表之间的逻辑关联（如净利润连接CFO、固定资产变动连接CFI等）；异常勾稽关系（如利润高但CFO持续为负）可能提示财务造假。
 - id: q16
   category: industry_nev
-  question: "新能源车产业链上中下游分别有哪些环节？"
-  expected_docs: [industry_new_energy_vehicle.md]
-  expected_keywords: [上游, 中游, 下游, 三电]
-
+  question: 新能源车产业链上中下游分别有哪些环节？
+  expected_docs:
+  - industry_new_energy_vehicle.md
+  expected_keywords:
+  - 上游
+  - 中游
+  - 下游
+  - 三电
+  reference: 新能源车产业链上游包括锂钴镍资源、正负极材料、电解液、隔膜；中游为动力电池、电机电控、电芯PACK；下游为整车制造、充电设施及后市场服务。
 - id: q17
   category: industry_nev
-  question: "动力电池主流路线 LFP 和三元有什么区别？"
-  expected_docs: [industry_new_energy_vehicle.md]
-  expected_keywords: [磷酸铁锂, LFP, 三元, 能量密度]
-
+  question: 动力电池主流路线 LFP 和三元有什么区别？
+  expected_docs:
+  - industry_new_energy_vehicle.md
+  expected_keywords:
+  - 磷酸铁锂
+  - LFP
+  - 三元
+  - 能量密度
+  reference: LFP（磷酸铁锂）电池成本低、安全性高、循环寿命长但能量密度较低；三元电池能量密度高、低温性能好但成本高、热稳定性较差。
 - id: q18
   category: industry_nev
-  question: "什么是 800V 高电压平台？为什么需要碳化硅 SiC？"
-  expected_docs: [industry_new_energy_vehicle.md]
-  expected_keywords: [800V, SiC, 碳化硅]
-
+  question: 什么是 800V 高电压平台？为什么需要碳化硅 SiC？
+  expected_docs:
+  - industry_new_energy_vehicle.md
+  expected_keywords:
+  - 800V
+  - SiC
+  - 碳化硅
+  reference: 800V高压平台通过提升电压降低电流以减少充电损耗，实现超快充；碳化硅（SiC）器件耐高压、高频、高温，可显著提升电驱效率，适配800V系统。
 - id: q19
   category: industry_nev
-  question: "新能源车整车厂常用什么估值方法？"
-  expected_docs: [industry_new_energy_vehicle.md, valuation_methods.md]
-  expected_keywords: [PS, 单车, 销量]
-
+  question: 新能源车整车厂常用什么估值方法？
+  expected_docs:
+  - industry_new_energy_vehicle.md
+  - valuation_methods.md
+  expected_keywords:
+  - PS
+  - 单车
+  - 销量
+  reference: 新能源车整车厂早期常用PS（市销率）或EV/Sales估值（因普遍亏损），成熟期转向PE或DCF；部分也参考交付量、毛利率等运营指标。
 - id: q20
   category: industry_semi
-  question: "半导体产业链上游有哪些设备和材料？"
-  expected_docs: [industry_semiconductor.md]
-  expected_keywords: [光刻机, EDA, 材料]
-
+  question: 半导体产业链上游有哪些设备和材料？
+  expected_docs:
+  - industry_semiconductor.md
+  expected_keywords:
+  - 光刻机
+  - EDA
+  - 材料
+  reference: 半导体产业链上游设备包括光刻机、刻蚀机、薄膜沉积设备、离子注入机等；材料包括硅片、光刻胶、电子特气、CMP抛光材料、靶材等。
 - id: q21
   category: industry_semi
-  question: "IDM 和 Fabless+Foundry 模式有什么区别？"
-  expected_docs: [industry_semiconductor.md]
-  expected_keywords: [IDM, Fabless, Foundry, OSAT]
-
+  question: IDM 和 Fabless+Foundry 模式有什么区别？
+  expected_docs:
+  - industry_semiconductor.md
+  expected_keywords:
+  - IDM
+  - Fabless
+  - Foundry
+  - OSAT
+  reference: IDM（集成器件制造）模式覆盖设计、制造、封测全流程（如英特尔）；Fabless+Foundry模式中Fabless专注设计（如高通），Foundry专注代工（如台积电）。
 - id: q22
   category: industry_semi
-  question: "什么是 CoWoS？跟 AI 算力有什么关系？"
-  expected_docs: [industry_semiconductor.md, industry_ai_computing.md]
-  expected_keywords: [CoWoS, 先进封装, HBM]
-
+  question: 什么是 CoWoS？跟 AI 算力有什么关系？
+  expected_docs:
+  - industry_semiconductor.md
+  - industry_ai_computing.md
+  expected_keywords:
+  - CoWoS
+  - 先进封装
+  - HBM
+  reference: CoWoS（Chip-on-Wafer-on-Substrate）是台积电的先进封装技术，通过2.5D/3D堆叠将多个芯片（如GPU、HBM）集成，大幅提升AI芯片算力密度和带宽。
 - id: q23
   category: industry_semi
-  question: "第三代半导体 SiC 和 GaN 主要应用在哪里？"
-  expected_docs: [industry_semiconductor.md]
-  expected_keywords: [SiC, GaN, 800V, 快充]
-
+  question: 第三代半导体 SiC 和 GaN 主要应用在哪里？
+  expected_docs:
+  - industry_semiconductor.md
+  expected_keywords:
+  - SiC
+  - GaN
+  - 800V
+  - 快充
+  reference: SiC主要用于新能源车电驱、光伏逆变器、充电桩等高压高频场景；GaN则适用于快充、数据中心电源、5G射频等中低压高频领域。
 - id: q24
   category: industry_ai
-  question: "HBM 是什么？谁是主要供应商？"
-  expected_docs: [industry_ai_computing.md]
-  expected_keywords: [HBM, 海力士, 三星, 美光]
-
+  question: HBM 是什么？谁是主要供应商？
+  expected_docs:
+  - industry_ai_computing.md
+  expected_keywords:
+  - HBM
+  - 海力士
+  - 三星
+  - 美光
+  reference: HBM（High Bandwidth Memory）是高带宽堆叠式DRAM，用于AI/GPU加速；主要供应商包括SK海力士、三星、美光，台积电提供CoWoS封装支持。
 - id: q25
   category: industry_ai
-  question: "AI 算力训练和推理有什么区别？"
-  expected_docs: [industry_ai_computing.md]
-  expected_keywords: [训练, 推理, GPU]
-
+  question: AI 算力训练和推理有什么区别？
+  expected_docs:
+  - industry_ai_computing.md
+  expected_keywords:
+  - 训练
+  - 推理
+  - GPU
+  reference: 训练是用大量数据构建AI模型，计算密集、耗时长；推理是用训练好的模型处理新输入，要求低延迟、高并发，两者对算力架构需求不同。
 - id: q26
   category: industry_ai
-  question: "测试时计算 test-time compute 是什么？为什么会拉动推理算力？"
-  expected_docs: [industry_ai_computing.md, sample_research_report_ai_computing.md]
-  expected_keywords: [测试时计算, 推理]
-
+  question: 测试时计算 test-time compute 是什么？为什么会拉动推理算力？
+  expected_docs:
+  - industry_ai_computing.md
+  - sample_research_report_ai_computing.md
+  expected_keywords:
+  - 测试时计算
+  - 推理
+  reference: Test-time compute指模型在推理阶段动态调用额外计算资源（如检索、重排序），可提升输出质量，从而增加单次推理的算力消耗，拉动推理芯片需求。
 - id: q27
   category: industry_ai
-  question: "数据中心液冷渗透率为什么快速提升？"
-  expected_docs: [industry_ai_computing.md, sample_research_report_ai_computing.md]
-  expected_keywords: [液冷, 机柜, 功率密度]
-
-- id: q28
-  category: demo_company
-  question: "星核能源 2024 年营收和净利润是多少？"
-  expected_docs: [sample_company_starcore_energy.md]
-  expected_keywords: [星核能源, 312, 38]
-
-- id: q29
-  category: demo_company
-  question: "星核能源在钠离子电池上有什么规划？"
-  expected_docs: [sample_company_starcore_energy.md]
-  expected_keywords: [钠离子, 钠电, GWh]
-
-- id: q30
-  category: demo_company
-  question: "星核能源海外建厂布局有哪些？"
-  expected_docs: [sample_company_starcore_energy.md]
-  expected_keywords: [德国, 匈牙利, 美国]
+  question: 数据中心液冷渗透率为什么快速提升？
+  expected_docs:
+  - industry_ai_computing.md
+  - sample_research_report_ai_computing.md
+  expected_keywords:
+  - 液冷
+  - 机柜
+  - 功率密度
+  reference: 数据中心液冷渗透率快速提升，因AI服务器功耗激增（单机柜超30kW），风冷散热已达极限，液冷（尤其冷板/浸没式）散热效率更高、PUE更低。
+- id: q31
+  category: company_filings
+  question: ???? 2026 ????????????????????????????
+  expected_docs:
+  - 300750_2026Q1_report.pdf
+  expected_keywords:
+  - 129,131,041
+  - 20,737,710
+  - 52.45%
+  - 48.52%
+  reference: ???? 2026 ? Q1 ???? 129,131,041 ??????? 52.45%?????? 20,737,710 ??????? 48.52%?
+- id: q32
+  category: company_filings
+  question: ???? 2026 ??????????????????????????
+  expected_docs:
+  - 300750_2026Q1_report.pdf
+  expected_keywords:
+  - '4.58'
+  - '3.18'
+  - ????
+  reference: ???? 2026 ? Q1 ?????? 4.58 ??????? 3.18 ??????? 44%?
+- id: q33
+  category: company_filings
+  question: ???? 2026 ? Q1 ?????????????????????????
+  expected_docs:
+  - 300750_2026Q1_report.pdf
+  expected_keywords:
+  - 1,046,329,036
+  - 357,262,588
+  - ???
+  - ?????
+  reference: ???? 2026 ? Q1 ???? 1,046,329,036 ?????????????? 357,262,588 ???
+- id: q34
+  category: company_filings
+  question: ??????????????????????????????????
+  expected_docs:
+  - 300750_2026Q1_report.pdf
+  expected_keywords:
+  - ????
+  - 22.45%
+  - ???
+  - ??????
+  reference: ????????????????????? 22.45%?? 10.25 ????????????????????? 16.68%??????????? 9.21%?
+- id: q35
+  category: company_filings
+  question: ???? 2026 ? Q1 ????????????????????????
+  expected_docs:
+  - 300750_2026Q1_report.pdf
+  expected_keywords:
+  - 33,680,852
+  - ????
+  - ????
+  - ???
+  reference: ???? 2026 ? Q1 ?????????? 33,680,852 ??????? 32,868,257 ???????? 2.5%?
+- id: q36
+  category: glossary
+  question: ????????????????????
+  expected_docs:
+  - financial_terms.md
+  expected_keywords:
+  - ???
+  - ???
+  - ???
+  - ????
+  reference: ??? = (???? - ????) / ??????????????????????? = ??? / ?????????????????????????????????????
+- id: q37
+  category: glossary
+  question: ????????????????????????
+  expected_docs:
+  - financial_statements.md
+  expected_keywords:
+  - ?????
+  - ??
+  - ????
+  - ????
+  reference: ??????? 40-60% ?????? 40% ?????? 70% ??????????????????>2 ??????????>1 ??????????????????????
+- id: q38
+  category: valuation
+  question: ?????? PB???????????????
+  expected_docs:
+  - valuation_methods.md
+  expected_keywords:
+  - ???
+  - PB
+  - ????
+  - ??
+  reference: ??? PB = ?? / ????? = ??? / ????????????????????????? PB ? 0.5-0.7 ??????????????????????????
+- id: q39
+  category: industry_ai
+  question: AI ??????????????????????
+  expected_docs:
+  - industry_ai_computing.md
+  expected_keywords:
+  - ???
+  - NVIDIA
+  - H100
+  - AMD
+  - GPU
+  reference: AI ??????????NVIDIA????????H100/B200 GPU ??????????CUDA ??????AMD MI300X ??????????? Google TPU?AWS Trainium
+    ??????????????????????
+- id: q40
+  category: industry_nev
+  question: ??????????????????????
+  expected_docs:
+  - industry_new_energy_vehicle.md
+  expected_keywords:
+  - ????
+  - ????
+  - ???
+  - ?????
+  reference: ??????????????????????????????? 400Wh/kg???????????????????????????????????????????? 2028-2030 ???????

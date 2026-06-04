@@ -305,6 +305,12 @@ def main() -> int:
     )
     parser.add_argument("--limit", type=int, default=0, help="仅评前 N 条（0 表示全部）")
     parser.add_argument(
+        "--pipeline",
+        default="local",
+        choices=["local", "hybrid"],
+        help="RAG pipeline: local or hybrid",
+    )
+    parser.add_argument(
         "--rows-out",
         default=str(_PROJECT_ROOT / "tests" / "eval_ragas_rows.csv"),
         help="每题明细 CSV",
@@ -394,10 +400,15 @@ def main() -> int:
         return 3
 
     print(f"加载评测集: {ds_path} · {len(raw_rows)} 条")
-    print("初始化 RAGSummarize…")
-    from rag.ragsummarize import RAGSummarize  # noqa: E402
-
-    rag = RAGSummarize()
+    pipeline = args.pipeline
+    if pipeline == "hybrid":
+        from rag.ragsummarize import HybridRAG  # noqa: E402
+        rag = HybridRAG()
+        print("初始化 HybridRAG（多路召回）...")
+    else:
+        from rag.ragsummarize import RAGSummarize  # noqa: E402
+        rag = RAGSummarize()
+        print("初始化 RAGSummarize...")
 
     samples: list[dict[str, Any]] = []
     row_meta: list[dict[str, Any]] = []
@@ -422,7 +433,7 @@ def main() -> int:
             with contextlib.redirect_stdout(io.StringIO()):
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore", DeprecationWarning)
-                    answer = rag.summarize(q)
+                    answer = rag.summarize_with_docs(q, docs)
             t2 = time.perf_counter()
             t_llm_ms = (t2 - t1) * 1000.0
         except Exception as e:  # noqa: BLE001
