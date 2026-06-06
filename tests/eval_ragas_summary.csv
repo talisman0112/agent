@@ -1,4 +1,4 @@
 metric,mean,std,n_valid,dataset,n_total,n_evaluated,metrics_used
-answer_relevancy,0.710930,0.367880,37,tests\golden_set.yml,37,37,faithfulness;answer_relevancy;context_recall
-context_recall,0.405405,0.440154,37,tests\golden_set.yml,37,37,faithfulness;answer_relevancy;context_recall
-faithfulness,0.714700,0.278290,37,tests\golden_set.yml,37,37,faithfulness;answer_relevancy;context_recall
+answer_relevancy,0.690552,0.384958,37,tests\golden_set.yml,37,37,faithfulness;answer_relevancy;context_recall
+context_recall,0.421171,0.481905,37,tests\golden_set.yml,37,37,faithfulness;answer_relevancy;context_recall
+faithfulness,0.706889,0.253922,37,tests\golden_set.yml,37,37,faithfulness;answer_relevancy;context_recall
